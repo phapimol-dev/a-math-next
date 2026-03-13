@@ -11,8 +11,8 @@ COPY src ./src
 # Ensure Next is not required for the pure backend if we only run server.mjs
 # But here server.mjs imports from src/lib which is fine.
 
-EXPOSE 3000
-
+EXPOSE 8080
+ENV PORT=8080
 ENV NODE_ENV=production
 
 CMD ["node", "server.mjs"]

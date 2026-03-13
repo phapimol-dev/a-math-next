@@ -30,16 +30,24 @@ if (!isPureBackend) {
 
 const server = express();
 
-// Global middleware
-server.use(cors({
-  origin: (origin, callback) => callback(null, true), // Mirror the origin
-  credentials: true
-}));
-
+// Diagnostic Middleware: Log ALL Headers for troubleshooting
 server.use((req, res, next) => {
-  console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
+  const origin = req.headers.origin || 'none';
+  console.log(`[HTTP DEBUG] ${req.method} ${req.url}`);
+  console.log(`[HTTP DEBUG] Origin: ${origin}`);
+  if (req.method === 'OPTIONS') {
+    console.log(`[HTTP DEBUG] Preflight request detected`);
+  }
   next();
 });
+
+// Global CORS - Mirroring approach
+server.use(cors({
+  origin: true, // Automatically reflect request origin
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+}));
 
 // Health check routes
 server.get(['/', '/health'], (req, res) => {
@@ -67,11 +75,15 @@ httpServer.on('error', (err) => {
 
 const io = new Server(httpServer, {
   cors: { 
-    origin: (origin, callback) => callback(null, true),
+    origin: (origin, callback) => {
+      // Allow all origins for Socket.io
+      callback(null, true);
+    },
     methods: ["GET", "POST"],
     credentials: true
   },
-  allowEIO3: true // Support older clients if any
+  allowEIO3: true,
+  transports: ['polling', 'websocket'] // Ensure both are supported
 });
 
 const rooms = new Map();
