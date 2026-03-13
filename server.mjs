@@ -20,6 +20,7 @@ if (process.env.PURE_BACKEND !== "true") {
 }
 
 const httpServer = createServer((req, res) => {
+  console.log(`[HTTP] ${req.method} ${req.url}`);
   try {
     const parsedUrl = parse(req.url, true);
     if (handle) {
@@ -472,8 +473,9 @@ const startApp = async () => {
     console.log("Starting in PURE BACKEND mode...");
   }
 
-  httpServer.listen(port, hostname, () => {
-    console.log(`> Ready on http://${hostname}:${port}`);
+  console.log(`Starting HTTP server on port ${port}...`);
+  httpServer.listen(port, "0.0.0.0", () => {
+    console.log(`> Ready and listening on port ${port}`);
   });
 };
 
