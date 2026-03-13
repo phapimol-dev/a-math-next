@@ -9,46 +9,49 @@ import { findBotMove } from "./src/lib/bot_ai.js";
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
-const app = next({ dev, hostname, port });
-const handle = app.getRequestHandler();
 
-const startHttpServer = (requestHandler) => {
-  const httpServer = createServer((req, res) => {
-    try {
-      const parsedUrl = parse(req.url, true);
-      if (requestHandler) {
-        requestHandler(req, res, parsedUrl);
-      } else {
-        res.statusCode = 404;
-        res.end('A-Math Backend is running (Socket mode)');
-      }
-    } catch (err) {
-      console.error('Error handling request:', err);
-      res.statusCode = 500;
-      res.end('Internal Server Error');
+// Initialize Next.js only if NOT in Pure Backend mode
+let app = null;
+let handle = null;
+
+if (process.env.PURE_BACKEND !== "true") {
+  app = next({ dev, hostname, port });
+  handle = app.getRequestHandler();
+}
+
+const httpServer = createServer((req, res) => {
+  try {
+    const parsedUrl = parse(req.url, true);
+    if (handle) {
+      handle(req, res, parsedUrl);
+    } else {
+      res.statusCode = 404;
+      res.end('A-Math Backend is running (Socket mode)');
     }
-  });
+  } catch (err) {
+    console.error('Error handling request:', err);
+    res.statusCode = 500;
+    res.end('Internal Server Error');
+  }
+});
 
-  httpServer.on('error', (err) => {
-    console.error('HTTP Server Error:', err);
-  });
-  return httpServer;
-};
+httpServer.on('error', (err) => {
+  console.error('HTTP Server Error:', err);
+});
 
-const setupSocket = (httpServer) => {
-  const io = new Server(httpServer, {
-    cors: { 
-      origin: [
-        "http://localhost:3000", 
-        "http://localhost:3001",
-        /\.pages\.dev$/, // Cloudflare Pages preview URLs
-        process.env.FRONTEND_URL // Production Cloudflare URL
-      ].filter(Boolean),
-      methods: ["GET", "POST"] 
-    }
-  });
+const io = new Server(httpServer, {
+  cors: { 
+    origin: [
+      "http://localhost:3000", 
+      "http://localhost:3001",
+      /\.pages\.dev$/, 
+      process.env.FRONTEND_URL
+    ].filter(Boolean),
+    methods: ["GET", "POST"] 
+  }
+});
 
-  const rooms = new Map();
+const rooms = new Map();
   const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
   const SPECIAL_SQUARES = {
@@ -194,7 +197,7 @@ const setupSocket = (httpServer) => {
     });
   }, 1000);
 
-  io.on("connection", (socket) => {
+io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
     socket.on("createRoom", ({ playerName, isPublic, isManualCheck }) => {
@@ -452,30 +455,28 @@ const setupSocket = (httpServer) => {
         }
       }
     });
-  });
+});
 
-  // Start listener
-  httpServer.listen(port, () => {
+// Start the server
+const startApp = async () => {
+  if (app) {
+    try {
+      await app.prepare();
+      console.log("Next.js prepared successfully.");
+    } catch (err) {
+      console.error('Next.js preparation failed, switching to PURE BACKEND mode:', err);
+      handle = null; // Disable Next.js handler
+    }
+  } else {
+    console.log("Starting in PURE BACKEND mode...");
+  }
+
+  httpServer.listen(port, hostname, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
   });
 };
 
-if (process.env.PURE_BACKEND === "true") {
-  console.log("Starting in PURE BACKEND mode...");
-  const httpServer = startHttpServer(null);
-  setupSocket(httpServer);
-} else {
-  app.prepare().then(() => {
-    const httpServer = startHttpServer(handle);
-    setupSocket(httpServer);
-  }).catch((err) => {
-    console.error('Next.js preparation failed:', err);
-    // Fallback to pure backend if Next fails
-    console.log("Falling back to PURE BACKEND mode...");
-    const httpServer = startHttpServer(null);
-    setupSocket(httpServer);
-  });
-}
+startApp();
 
 function getPublicRoomsList(rooms) {
   return Array.from(rooms.values())
