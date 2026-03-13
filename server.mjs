@@ -1,6 +1,5 @@
 import { createServer } from "http";
 import { parse } from "url";
-import next from "next";
 import { Server } from "socket.io";
 import express from "express";
 import cors from "cors";
@@ -14,86 +13,43 @@ const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
 
 // Detect if we should run in Pure Backend mode (no Next.js)
-// On Railway/Fly.io, we typically won't have the .next folder in the backend container
 const isPureBackend = process.env.PURE_BACKEND === "true" || !fs.existsSync('./.next');
 
-let app = null;
-let handle = null;
+let handle = null; // Will be set if Next.js initializes successfully
 
-if (!isPureBackend) {
-  console.log("Initializing Next.js...");
-  app = next({ dev, hostname, port });
-  handle = app.getRequestHandler();
-} else {
-  console.log("PURE BACKEND mode detected (No .next folder found).");
-}
+console.log(`[Boot] Mode: ${isPureBackend ? 'PURE BACKEND' : 'Next.js + Backend'}`);
+console.log(`[Boot] Port: ${port}`);
 
-const server = express();
+// --- Express App ---
+const app = express();
 
-// High-Priority CORS
-const corsMiddleware = cors({
-  origin: true,
-  credentials: true,
-  methods: ["GET", "POST", "OPTIONS"]
-});
+// CORS for non-socket.io routes
+app.use(cors({ origin: true, credentials: true }));
 
-server.use((req, res, next) => {
-  if (req.path.startsWith('/socket.io/')) {
-    return next(); // Skip Express CORS, let Socket.IO handle its own CORS and preflight
-  }
-  corsMiddleware(req, res, next);
-});
-
-// Diagnostic/Logging Middleware
-server.use((req, res, next) => {
-  const origin = req.headers.origin || 'none';
-  if (req.method !== 'OPTIONS' || !req.url.includes('socket.io')) {
-    console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${origin}`);
+// Logging
+app.use((req, res, next) => {
+  if (!req.path.startsWith('/socket.io')) {
+    console.log(`[HTTP] ${req.method} ${req.path}`);
   }
   next();
 });
 
-// Health check routes
-server.get(['/', '/health'], (req, res) => {
-  res.status(200).send('A-Math Backend: OK');
+// Health check
+app.get(['/', '/health'], (req, res) => {
+  res.status(200).json({ status: 'ok', mode: isPureBackend ? 'socket-only' : 'nextjs' });
 });
 
-// Next.js handler (if enabled)
-if (handle) {
-  server.all('*', (req, res) => {
-    if (req.path.startsWith('/socket.io/')) return; // Let Socket.io handle it
-    return handle(req, res, parse(req.url, true));
-  });
-} else {
-  server.all('*', (req, res) => {
-    if (req.path.startsWith('/socket.io/')) return; // Let Socket.io handle it
-    res.status(404).send('Not Found');
-  });
-}
+// --- HTTP Server ---
+const httpServer = createServer(app);
 
-
-const httpServer = createServer(server);
-
-httpServer.on('error', (err) => {
-  console.error('HTTP Server Error:', err);
-});
-
+// --- Socket.IO ---
 const io = new Server(httpServer, {
-  cors: { 
-    origin: (origin, callback) => callback(null, true),
+  cors: {
+    origin: true,
     methods: ["GET", "POST"],
     credentials: true
   },
-  allowEIO3: true,
   transports: ['polling', 'websocket']
-});
-
-// Force headers on engine level to bypass proxy issues
-io.engine.on("headers", (headers, req) => {
-  const origin = req.headers.origin || '*';
-  headers["Access-Control-Allow-Origin"] = origin;
-  headers["Access-Control-Allow-Credentials"] = "true";
-  headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
 });
 
 const rooms = new Map();
@@ -504,24 +460,41 @@ io.on("connection", (socket) => {
 
 // Start the server
 const startApp = async () => {
-  if (app && !isPureBackend) {
-    console.log("Preparing Next.js app...");
-    try {
-      await app.prepare();
-      console.log("Next.js prepared successfully.");
-    } catch (err) {
-      console.error('Next.js preparation failed, fallback to PURE BACKEND mode:', err);
-      handle = null; // Disable Next.js handler
-    }
-  }
+  try {
+    // Only load Next.js if we're NOT in pure backend mode
+    if (!isPureBackend) {
+      console.log("[Boot] Loading Next.js...");
+      const nextModule = await import("next");
+      const nextApp = nextModule.default({ dev, hostname, port });
+      handle = nextApp.getRequestHandler();
+      await nextApp.prepare();
+      console.log("[Boot] Next.js ready.");
 
-  // Bind to port and 0.0.0.0 (required for Railway/Docker)
-  httpServer.listen(port, "0.0.0.0", () => {
-    console.log(`[Backend] Listening on port ${port}`);
-    console.log(`[Backend] Status: ${handle ? 'Next.js + Socket' : 'Pure Socket Mode'}`);
-    console.log(`[Backend] Test with: curl http://localhost:${port}/`);
-  });
+      // Add Next.js catch-all route
+      app.all('*', (req, res) => {
+        return handle(req, res, parse(req.url, true));
+      });
+    }
+
+    // Bind to port (required for Railway/Docker)
+    httpServer.listen(port, "0.0.0.0", () => {
+      console.log(`[Backend] Listening on port ${port}`);
+      console.log(`[Backend] Status: ${handle ? 'Next.js + Socket' : 'Pure Socket Mode'}`);
+      console.log(`[Backend] Test: curl http://localhost:${port}/`);
+    });
+  } catch (err) {
+    console.error("[Boot] Fatal error:", err);
+    process.exit(1);
+  }
 };
+
+// Catch unhandled errors to prevent silent crashes
+process.on('uncaughtException', (err) => {
+  console.error('[FATAL] Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('[FATAL] Unhandled Rejection:', err);
+});
 
 startApp();
 
