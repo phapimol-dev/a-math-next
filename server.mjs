@@ -71,21 +71,40 @@ if (handle) {
 
 const httpServer = createServer(server);
 
+// Nuclear CORS: Set headers on the raw HTTP server level
+httpServer.on('request', (req, res) => {
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  
+  if (req.method === 'OPTIONS') {
+    res.statusCode = 200;
+    res.end();
+  }
+});
+
 httpServer.on('error', (err) => {
   console.error('HTTP Server Error:', err);
 });
 
 const io = new Server(httpServer, {
   cors: { 
-    origin: (origin, callback) => {
-      // Allow all origins for Socket.io
-      callback(null, true);
-    },
+    origin: (origin, callback) => callback(null, true),
     methods: ["GET", "POST"],
     credentials: true
   },
   allowEIO3: true,
-  transports: ['polling', 'websocket'] // Ensure both are supported
+  transports: ['polling', 'websocket']
+});
+
+// Force headers on engine level to bypass proxy issues
+io.engine.on("headers", (headers, req) => {
+  const origin = req.headers.origin || '*';
+  headers["Access-Control-Allow-Origin"] = origin;
+  headers["Access-Control-Allow-Credentials"] = "true";
+  headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
 });
 
 const rooms = new Map();
