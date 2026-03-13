@@ -180,6 +180,13 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
     });
   };
 
+  const handleResign = () => {
+    if (!gameState || gameState.gameState !== 'playing') return;
+    if (window.confirm("Are you sure you want to surrender? You will lose the game immediately.")) {
+      socket.emit('resign', gameState.id);
+    }
+  };
+
   const handleToggleSwapMode = () => {
     if (!isMyTurn) return;
     if (isSwapMode) {

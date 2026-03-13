@@ -440,7 +440,22 @@ io.on("connection", (socket) => {
       // 4. Advance turn and clear last move (skips can't be challenged)
       room.lastMove = null;
       commitTurn(room);
-      io.to(roomId).emit("moveMade", { room, moveScore: 0 });
+    socket.on("resign", (roomId) => {
+      const room = rooms.get(roomId);
+      if (room && room.gameState === "playing") {
+        room.gameState = "finished";
+        const resigningPlayer = room.players.find(p => p.id === socket.id);
+        const winner = room.players.find(p => p.id !== socket.id);
+        
+        console.log(`[Game Over] Room ${roomId} ended by resignation. ${winner?.name || "Opponent"} wins!`);
+        io.to(roomId).emit("gameOver", { 
+          room, 
+          reason: "resignation", 
+          winnerId: winner?.id,
+          looserName: resigningPlayer?.name || "Someone"
+        });
+        if (room.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
+      }
     });
 
     socket.on("getPublicRooms", () => {
