@@ -27,29 +27,32 @@ if (!isPureBackend) {
 }
 
 const httpServer = createServer((req, res) => {
-  console.log(`[HTTP] ${req.method} ${req.url}`);
-  
-  // High-priority health check
-  if (req.url === '/health' || req.url === '/') {
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Connection', 'close');
-    return res.end('OK');
-  }
-
+  const start = Date.now();
+  console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
   try {
     const parsedUrl = parse(req.url, true);
+    
+    // Multi-purpose Health Check / Root check
+    if (parsedUrl.pathname === '/' || parsedUrl.pathname === '/health') {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain');
+      res.setHeader('Access-Control-Allow-Origin', '*'); // Allow health check from anywhere
+      res.end('A-Math Backend: OK');
+      const duration = Date.now() - start;
+      console.log(`[HTTP] ${req.method} ${req.url} - 200 OK (${duration}ms)`);
+      return;
+    }
+
     if (handle) {
       handle(req, res, parsedUrl);
     } else {
       res.statusCode = 404;
-      res.setHeader('Connection', 'close');
-      res.end('Not Found (Pure Backend Mode)');
+      res.end('Not Found');
     }
   } catch (err) {
     console.error('Error handling request:', err);
     res.statusCode = 500;
-    res.end('Internal Error');
+    res.end('Error');
   }
 });
 
@@ -59,12 +62,7 @@ httpServer.on('error', (err) => {
 
 const io = new Server(httpServer, {
   cors: { 
-    origin: [
-      "http://localhost:3000", 
-      "http://localhost:3001",
-      /\.pages\.dev$/, 
-      process.env.FRONTEND_URL
-    ].filter(Boolean),
+    origin: "*",
     methods: ["GET", "POST"] 
   }
 });
