@@ -48,18 +48,6 @@ const setupSocket = (httpServer) => {
     }
   });
 
-  const io = new Server(httpServer, {
-    cors: { 
-      origin: [
-        "http://localhost:3000", 
-        "http://localhost:3001",
-        /\.pages\.dev$/, // Cloudflare Pages preview URLs
-        process.env.FRONTEND_URL // Production Cloudflare URL
-      ].filter(Boolean),
-      methods: ["GET", "POST"] 
-    }
-  });
-
   const rooms = new Map();
   const generateRoomId = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
