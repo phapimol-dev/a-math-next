@@ -2,6 +2,8 @@ import { createServer } from "http";
 import { parse } from "url";
 import next from "next";
 import { Server } from "socket.io";
+import express from "express";
+import cors from "cors";
 import { generateTiles, drawTiles } from "./src/lib/tiles.js";
 import { validateEquation, extractEquations, calculateScore } from "./src/lib/math_validator.js";
 import { findBotMove } from "./src/lib/bot_ai.js";
@@ -26,35 +28,28 @@ if (!isPureBackend) {
   console.log("PURE BACKEND mode detected (No .next folder found).");
 }
 
-const httpServer = createServer((req, res) => {
-  const start = Date.now();
-  console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
-  try {
-    const parsedUrl = parse(req.url, true);
-    
-    // Multi-purpose Health Check / Root check
-    if (parsedUrl.pathname === '/' || parsedUrl.pathname === '/health') {
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain');
-      res.setHeader('Access-Control-Allow-Origin', '*'); // Allow health check from anywhere
-      res.end('A-Math Backend: OK');
-      const duration = Date.now() - start;
-      console.log(`[HTTP] ${req.method} ${req.url} - 200 OK (${duration}ms)`);
-      return;
-    }
+const server = express();
 
-    if (handle) {
-      handle(req, res, parsedUrl);
-    } else {
-      res.statusCode = 404;
-      res.end('Not Found');
-    }
-  } catch (err) {
-    console.error('Error handling request:', err);
-    res.statusCode = 500;
-    res.end('Error');
-  }
+// Global middleware
+server.use(cors());
+server.use((req, res, next) => {
+  console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
+  next();
 });
+
+// Health check routes
+server.get(['/', '/health'], (req, res) => {
+  res.send('A-Math Backend: OK');
+});
+
+// Next.js handler (if enabled)
+if (handle) {
+  server.all('*', (req, res) => {
+    return handle(req, res, parse(req.url, true));
+  });
+}
+
+const httpServer = createServer(server);
 
 httpServer.on('error', (err) => {
   console.error('HTTP Server Error:', err);
