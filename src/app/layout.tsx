@@ -9,7 +9,6 @@ export const metadata: Metadata = {
   description: "Mathematical Crossword Board Game",
   manifest: "/manifest.json",
   appleWebApp: {
-    capable: true,
     statusBarStyle: "default",
     title: "A-Math",
   },

@@ -30,26 +30,21 @@ if (!isPureBackend) {
 
 const server = express();
 
-server.use((req, res, next) => {
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-
-  console.log(`[HTTP DEBUG] ${req.method} ${req.url} - Origin: ${origin}`);
-  next();
-});
-
-// Global CORS - Standard middleware as backup
+// High-Priority CORS (MUST be first)
 server.use(cors({
   origin: true,
-  credentials: true
+  credentials: true,
+  methods: ["GET", "POST", "OPTIONS"]
 }));
+
+// Diagnostic/Logging Middleware
+server.use((req, res, next) => {
+  const origin = req.headers.origin || 'none';
+  if (req.method !== 'OPTIONS' || !req.url.includes('socket.io')) {
+    console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${origin}`);
+  }
+  next();
+});
 
 // Health check routes
 server.get(['/', '/health'], (req, res) => {
@@ -62,28 +57,12 @@ if (handle) {
     return handle(req, res, parse(req.url, true));
   });
 } else {
-  // Catch-all for pure backend to log missing routes
   server.all('*', (req, res) => {
-    console.warn(`[HTTP] Unhandled path: ${req.url}`);
     res.status(404).send('Not Found');
   });
 }
 
 const httpServer = createServer(server);
-
-// Nuclear CORS: Set headers on the raw HTTP server level
-httpServer.on('request', (req, res) => {
-  const origin = req.headers.origin || '*';
-  res.setHeader('Access-Control-Allow-Origin', origin);
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  
-  if (req.method === 'OPTIONS') {
-    res.statusCode = 200;
-    res.end();
-  }
-});
 
 httpServer.on('error', (err) => {
   console.error('HTTP Server Error:', err);
