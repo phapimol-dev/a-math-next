@@ -28,19 +28,28 @@ if (!isPureBackend) {
 
 const httpServer = createServer((req, res) => {
   console.log(`[HTTP] ${req.method} ${req.url}`);
+  
+  // High-priority health check
+  if (req.url === '/health' || req.url === '/') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Connection', 'close');
+    return res.end('OK');
+  }
+
   try {
     const parsedUrl = parse(req.url, true);
     if (handle) {
       handle(req, res, parsedUrl);
     } else {
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'text/plain');
-      res.end('A-Math Backend is running (Socket mode)');
+      res.statusCode = 404;
+      res.setHeader('Connection', 'close');
+      res.end('Not Found (Pure Backend Mode)');
     }
   } catch (err) {
     console.error('Error handling request:', err);
     res.statusCode = 500;
-    res.end('Internal Server Error');
+    res.end('Internal Error');
   }
 });
 
