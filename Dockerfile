@@ -6,7 +6,7 @@ COPY package*.json ./
 RUN npm install --production
 
 COPY server.mjs ./
-COPY src/lib ./src/lib
+COPY src ./src
 
 # Ensure Next is not required for the pure backend if we only run server.mjs
 # But here server.mjs imports from src/lib which is fine.

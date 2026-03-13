@@ -12,11 +12,16 @@ const port = parseInt(process.env.PORT || "3000", 10);
 const app = next({ dev, hostname, port });
 const handle = app.getRequestHandler();
 
-app.prepare().then(() => {
+const startHttpServer = (requestHandler) => {
   const httpServer = createServer((req, res) => {
     try {
       const parsedUrl = parse(req.url, true);
-      handle(req, res, parsedUrl);
+      if (requestHandler) {
+        requestHandler(req, res, parsedUrl);
+      } else {
+        res.statusCode = 404;
+        res.end('A-Math Backend is running (Socket mode)');
+      }
     } catch (err) {
       console.error('Error handling request:', err);
       res.statusCode = 500;
@@ -26,6 +31,21 @@ app.prepare().then(() => {
 
   httpServer.on('error', (err) => {
     console.error('HTTP Server Error:', err);
+  });
+  return httpServer;
+};
+
+const setupSocket = (httpServer) => {
+  const io = new Server(httpServer, {
+    cors: { 
+      origin: [
+        "http://localhost:3000", 
+        "http://localhost:3001",
+        /\.pages\.dev$/, // Cloudflare Pages preview URLs
+        process.env.FRONTEND_URL // Production Cloudflare URL
+      ].filter(Boolean),
+      methods: ["GET", "POST"] 
+    }
   });
 
   const io = new Server(httpServer, {
@@ -446,13 +466,28 @@ app.prepare().then(() => {
     });
   });
 
+  // Start listener
   httpServer.listen(port, () => {
     console.log(`> Ready on http://${hostname}:${port}`);
   });
-}).catch((err) => {
-  console.error('Next.js preparation failed:', err);
-  process.exit(1);
-});
+};
+
+if (process.env.PURE_BACKEND === "true") {
+  console.log("Starting in PURE BACKEND mode...");
+  const httpServer = startHttpServer(null);
+  setupSocket(httpServer);
+} else {
+  app.prepare().then(() => {
+    const httpServer = startHttpServer(handle);
+    setupSocket(httpServer);
+  }).catch((err) => {
+    console.error('Next.js preparation failed:', err);
+    // Fallback to pure backend if Next fails
+    console.log("Falling back to PURE BACKEND mode...");
+    const httpServer = startHttpServer(null);
+    setupSocket(httpServer);
+  });
+}
 
 function getPublicRoomsList(rooms) {
   return Array.from(rooms.values())
