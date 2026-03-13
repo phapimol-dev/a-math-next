@@ -31,7 +31,11 @@ if (!isPureBackend) {
 const server = express();
 
 // Global middleware
-server.use(cors());
+server.use(cors({
+  origin: (origin, callback) => callback(null, true), // Mirror the origin
+  credentials: true
+}));
+
 server.use((req, res, next) => {
   console.log(`[HTTP] ${req.method} ${req.url} - Origin: ${req.headers.origin || 'none'}`);
   next();
@@ -39,13 +43,19 @@ server.use((req, res, next) => {
 
 // Health check routes
 server.get(['/', '/health'], (req, res) => {
-  res.send('A-Math Backend: OK');
+  res.status(200).send('A-Math Backend: OK');
 });
 
 // Next.js handler (if enabled)
 if (handle) {
   server.all('*', (req, res) => {
     return handle(req, res, parse(req.url, true));
+  });
+} else {
+  // Catch-all for pure backend to log missing routes
+  server.all('*', (req, res) => {
+    console.warn(`[HTTP] Unhandled path: ${req.url}`);
+    res.status(404).send('Not Found');
   });
 }
 
@@ -57,9 +67,11 @@ httpServer.on('error', (err) => {
 
 const io = new Server(httpServer, {
   cors: { 
-    origin: "*",
-    methods: ["GET", "POST"] 
-  }
+    origin: (origin, callback) => callback(null, true),
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  allowEIO3: true // Support older clients if any
 });
 
 const rooms = new Map();
