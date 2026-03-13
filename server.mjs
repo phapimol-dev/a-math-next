@@ -5,18 +5,25 @@ import { Server } from "socket.io";
 import { generateTiles, drawTiles } from "./src/lib/tiles.js";
 import { validateEquation, extractEquations, calculateScore } from "./src/lib/math_validator.js";
 import { findBotMove } from "./src/lib/bot_ai.js";
+import fs from "fs";
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
 
-// Initialize Next.js only if NOT in Pure Backend mode
+// Detect if we should run in Pure Backend mode (no Next.js)
+// On Railway/Fly.io, we typically won't have the .next folder in the backend container
+const isPureBackend = process.env.PURE_BACKEND === "true" || !fs.existsSync('./.next');
+
 let app = null;
 let handle = null;
 
-if (process.env.PURE_BACKEND !== "true") {
+if (!isPureBackend) {
+  console.log("Initializing Next.js...");
   app = next({ dev, hostname, port });
   handle = app.getRequestHandler();
+} else {
+  console.log("PURE BACKEND mode detected (No .next folder found).");
 }
 
 const httpServer = createServer((req, res) => {
@@ -461,21 +468,22 @@ io.on("connection", (socket) => {
 
 // Start the server
 const startApp = async () => {
-  if (app) {
+  if (app && !isPureBackend) {
+    console.log("Preparing Next.js app...");
     try {
       await app.prepare();
       console.log("Next.js prepared successfully.");
     } catch (err) {
-      console.error('Next.js preparation failed, switching to PURE BACKEND mode:', err);
+      console.error('Next.js preparation failed, fallback to PURE BACKEND mode:', err);
       handle = null; // Disable Next.js handler
     }
-  } else {
-    console.log("Starting in PURE BACKEND mode...");
   }
 
-  console.log(`Starting HTTP server on port ${port}...`);
+  // Bind to port and 0.0.0.0 (required for Railway/Docker)
   httpServer.listen(port, "0.0.0.0", () => {
-    console.log(`> Ready and listening on port ${port}`);
+    console.log(`[Backend] Listening on port ${port}`);
+    console.log(`[Backend] Status: ${handle ? 'Next.js + Socket' : 'Pure Socket Mode'}`);
+    console.log(`[Backend] Test with: curl http://localhost:${port}/`);
   });
 };
 
