@@ -30,12 +30,19 @@ if (!isPureBackend) {
 
 const server = express();
 
-// High-Priority CORS (MUST be first)
-server.use(cors({
+// High-Priority CORS
+const corsMiddleware = cors({
   origin: true,
   credentials: true,
   methods: ["GET", "POST", "OPTIONS"]
-}));
+});
+
+server.use((req, res, next) => {
+  if (req.path.startsWith('/socket.io/')) {
+    return next(); // Skip Express CORS, let Socket.IO handle its own CORS and preflight
+  }
+  corsMiddleware(req, res, next);
+});
 
 // Diagnostic/Logging Middleware
 server.use((req, res, next) => {
@@ -54,13 +61,16 @@ server.get(['/', '/health'], (req, res) => {
 // Next.js handler (if enabled)
 if (handle) {
   server.all('*', (req, res) => {
+    if (req.path.startsWith('/socket.io/')) return; // Let Socket.io handle it
     return handle(req, res, parse(req.url, true));
   });
 } else {
   server.all('*', (req, res) => {
+    if (req.path.startsWith('/socket.io/')) return; // Let Socket.io handle it
     res.status(404).send('Not Found');
   });
 }
+
 
 const httpServer = createServer(server);
 
