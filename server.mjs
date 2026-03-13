@@ -35,7 +35,7 @@ app.use((req, res, next) => {
 });
 
 // Health check
-app.get(['/', '/health'], (req, res) => {
+app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', mode: isPureBackend ? 'socket-only' : 'nextjs' });
 });
 
@@ -440,6 +440,8 @@ io.on("connection", (socket) => {
       // 4. Advance turn and clear last move (skips can't be challenged)
       room.lastMove = null;
       commitTurn(room);
+    });
+
     socket.on("resign", (roomId) => {
       const room = rooms.get(roomId);
       if (room && room.gameState === "playing") {
