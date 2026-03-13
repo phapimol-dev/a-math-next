@@ -42,7 +42,14 @@ export const generateTiles = () => {
   OFFICIAL_TILE_SET.forEach(tile => {
     tiles.push({ ...tile, id: Math.random().toString(36).substring(2, 9) });
   });
-  return tiles.sort(() => Math.random() - 0.5);
+  
+  // Fisher-Yates Shuffle for true randomness
+  for (let i = tiles.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [tiles[i], tiles[j]] = [tiles[j], tiles[i]];
+  }
+  
+  return tiles;
 };
 
 export const drawTiles = (bag, count) => {

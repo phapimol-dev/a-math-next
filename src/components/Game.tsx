@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { socket } from '../socket';
-import { RotateCcw, Check, Info, LogOut } from 'lucide-react';
+import {
+  RotateCcw, Check, Info, LogOut, Flag, Settings, Volume2, Globe, X,
+  ChevronRight, Trophy, AlertTriangle, MessageSquare, Menu
+} from 'lucide-react';
+import { translations, Language, TranslationKey } from '../lib/translations';
 import './Game.css';
 import { sounds } from '../lib/sounds';
 
@@ -11,7 +15,6 @@ interface GameProps {
   onLeave: () => void;
 }
 
-// Define GameState interface based on usage
 interface GameState {
   id: string;
   gameState: 'waiting' | 'playing' | 'finished';
@@ -20,22 +23,26 @@ interface GameState {
     name: string;
     score: number;
     rack: any[];
-    timeLeft: number; // Added
+    timeLeft: number;
+    online?: boolean;
+    isBot?: boolean;
   }[];
   turnIndex: number;
   board: any[][];
   tiles: any[];
   isManualCheck?: boolean;
   lastMove?: any;
-  lastTurnStartTime: number | null; // Added
+  lastTurnStartTime: number | null;
+  botDifficulty?: number;
 }
 
 const formatTime = (ms: number) => {
-  if (ms < 0) ms = 0;
-  const totalSeconds = Math.floor(ms / 1000);
+  const isNegative = ms < 0;
+  const absMs = Math.abs(ms);
+  const totalSeconds = Math.floor(absMs / 1000);
   const mins = Math.floor(totalSeconds / 60);
   const secs = totalSeconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  return `${isNegative ? '-' : ''}${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
 const Game: React.FC<GameProps> = ({ room, onLeave }) => {
@@ -45,9 +52,49 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
   const [isSwapMode, setIsSwapMode] = useState(false);
   const [swapSelection, setSwapSelection] = useState<string[]>([]);
   const [isBotThinking, setIsBotThinking] = useState(false);
-  
+
   // Local high-frequency timer for smooth UI
   const [localTimeLeft, setLocalTimeLeft] = useState<number[]>([1320000, 1320000]);
+
+  // Blank Tile Selection
+  const [showBlankModal, setShowBlankModal] = useState(false);
+  const [pendingBlankPos, setPendingBlankPos] = useState<{ x: number, y: number } | null>(null);
+
+  // Rack Reordering
+  const [rackOrder, setRackOrder] = useState<string[]>([]);
+  const [reorderSelectedId, setReorderSelectedId] = useState<string | null>(null);
+
+  // Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [showNavMenu, setShowNavMenu] = useState(false);
+  const [language, setLanguage] = useState<Language>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('gameLanguage') as Language) || 'TH';
+    }
+    return 'TH';
+  });
+  const [volumeLevel, setVolumeLevel] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return parseInt(localStorage.getItem('gameVolume') || '3');
+    }
+    return 3;
+  });
+
+  // Game Over State
+  const [gameOverInfo, setGameOverInfo] = useState<{
+    room: GameState;
+    reason: string;
+    winnerId?: string;
+    looserName?: string;
+    isDraw?: boolean;
+  } | null>(null);
+
+  const t = (key: TranslationKey) => translations[language][key] || key;
+
+  const handleVolumeChange = (level: number) => {
+    setVolumeLevel(level);
+    sounds.setVolume(level);
+  };
 
   useEffect(() => {
     if (gameState.gameState !== 'playing') return;
@@ -56,11 +103,12 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
       setLocalTimeLeft(prev => {
         const newTime = [...prev];
         const activeIdx = gameState.turnIndex;
-        // Calculate expected time left: server state - (now - turnStartTime)
-        if (gameState.lastTurnStartTime) {
-            const elapsed = Date.now() - gameState.lastTurnStartTime;
-            const trueTime = Math.max(0, gameState.players[activeIdx].timeLeft - elapsed);
-            newTime[activeIdx] = trueTime;
+
+        const activePlayer = gameState.players[activeIdx];
+        if (activePlayer && gameState.lastTurnStartTime) {
+          const elapsed = Date.now() - gameState.lastTurnStartTime;
+          const trueTime = Math.max(-3600000, activePlayer.timeLeft - elapsed);
+          newTime[activeIdx] = trueTime;
         }
         return newTime;
       });
@@ -72,13 +120,18 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
   useEffect(() => {
     const handleRoomUpdate = (updatedRoom: GameState) => {
       setGameState(updatedRoom);
-      // Sync local times from server
-      setLocalTimeLeft(updatedRoom.players.map(p => p.timeLeft));
-    };
-    
-    const handleGameStarted = (updatedRoom: GameState) => {
-      setGameState(updatedRoom);
-      setLocalTimeLeft(updatedRoom.players.map(p => p.timeLeft));
+      if (updatedRoom.players) {
+        setLocalTimeLeft(updatedRoom.players.map(p => p.timeLeft || 0));
+      }
+      const myPlayer = updatedRoom.players.find(p => p.id === socket.id);
+      if (myPlayer) {
+        setRackOrder(prev => {
+          const currentIds = myPlayer.rack.map(t => t.id);
+          const nextOrder = prev.filter(id => currentIds.includes(id));
+          const newIds = currentIds.filter(id => !nextOrder.includes(id));
+          return [...nextOrder, ...newIds];
+        });
+      }
     };
 
     const handleMoveMade = ({ room, moveScore }: { room: GameState, moveScore: number }) => {
@@ -88,179 +141,159 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
       setSelectedTile(null);
       setIsSwapMode(false);
       setSwapSelection([]);
-      sounds.playTurnSound(); // Play turn sound
+      sounds.playTurnSound();
     };
 
-    const handleChallengeResult = ({ success, room, penalty }: { success: boolean, room: GameState, penalty?: number }) => {
+    const handleGameOver = ({ room, reason, winnerId, looserName, isDraw }: any) => {
       setGameState(room);
-      setLocalTimeLeft(room.players.map(p => p.timeLeft));
-      setPlacements([]);
-      setSelectedTile(null);
-      setIsSwapMode(false);
-      setSwapSelection([]);
-      
-      const penaltyText = penalty ? ` (${penalty} points penalty)` : "";
-      if (success) {
-        alert(`Challenge Successful! The opponent's previous move was invalid. Their points were deducted${penaltyText} and tiles were recalled.`);
-        sounds.playTurnSound(); // Play turn sound because challenge success switches turn back
-      } else {
-        alert(`Challenge Failed! The opponent's equation was valid. You lost ${penalty || 10} points as a penalty.`);
+      setGameOverInfo({ room, reason, winnerId, looserName, isDraw });
+      if (isDraw) sounds.playTurnSound();
+      else {
+        const isMeWinner = winnerId === socket.id;
+        if (isMeWinner) sounds.playWinSound();
+        else sounds.playLossSound();
       }
     };
 
-    const handleGameOver = ({ room, reason, winnerId, looserName }: any) => {
-        setGameState(room);
-        const isMewinner = winnerId === socket.id;
-        if (isMewinner) sounds.playWinSound();
-        else sounds.playLossSound();
-
-        if (reason === "timeout") {
-            const winner = room.players.find((p: any) => p.id === winnerId);
-            alert(`GAME OVER! ${looserName} ran out of time. ${winner?.name || "The opponent"} wins!`);
-        } else {
-            // handle other game over reasons if any
-        }
-    };
-
-    const handleBotThinking = (thinking: boolean) => {
-      setIsBotThinking(thinking);
-    };
-
     socket.on('playerJoined', handleRoomUpdate);
-    socket.on('gameStarted', handleGameStarted);
+    socket.on('gameStarted', (r) => { setGameState(r); setLocalTimeLeft(r.players.map((p: any) => p.timeLeft)); });
     socket.on('moveMade', handleMoveMade);
-    socket.on('challengeResult', handleChallengeResult);
-    socket.on('botThinking', handleBotThinking);
     socket.on('playerLeft', handleRoomUpdate);
     socket.on('gameOver', handleGameOver);
+    socket.on('botThinking', (thinking) => setIsBotThinking(thinking));
 
     return () => {
       socket.off('playerJoined', handleRoomUpdate);
-      socket.off('gameStarted', handleGameStarted);
+      socket.off('gameStarted');
       socket.off('moveMade', handleMoveMade);
-      socket.off('challengeResult', handleChallengeResult);
-      socket.off('botThinking', handleBotThinking);
       socket.off('playerLeft', handleRoomUpdate);
       socket.off('gameOver', handleGameOver);
+      socket.off('botThinking');
     };
   }, []);
 
-  const handleStartGame = () => {
-    socket.emit('startGame', gameState.id);
+  const handleStartGame = () => socket.emit('startGame', gameState.id);
+
+  const handleSurrender = () => {
+    if (window.confirm(t('confirmSurrender'))) {
+      socket.emit('resign', gameState.id);
+    }
   };
 
   const handleCellClick = (x: number, y: number) => {
     if (gameState.gameState !== 'playing') return;
     if (gameState.players[gameState.turnIndex].id !== socket.id) return;
 
-    // Check if clicking a tile we just placed, allowing removal
-    const existingPlacementIndex = placements.findIndex(p => p.x === x && p.y === y);
-    if (existingPlacementIndex !== -1) {
-      const newPlacements = [...placements];
-      newPlacements.splice(existingPlacementIndex, 1);
-      setPlacements(newPlacements);
-      setSelectedTile(null);
+    const existingPIdx = placements.findIndex(p => p.x === x && p.y === y);
+    if (existingPIdx !== -1) {
+      const newP = [...placements];
+      newP.splice(existingPIdx, 1);
+      setPlacements(newP);
       return;
     }
 
-    if (selectedTile) {
-      if (gameState.board[y][x].tile || existingPlacementIndex !== -1) return;
-      const newPlacements = [...placements, { x, y, tile: selectedTile }];
-      setPlacements(newPlacements);
-      setSelectedTile(null);
-    }
-  };
-
-  const handleSubmitMove = () => {
-    if (placements.length === 0) return;
-
-    socket.emit('makeMove', {
-      roomId: gameState.id,
-      move: { placements } // Removed equation manual entry
-    });
-  };
-
-  const handleResign = () => {
-    if (!gameState || gameState.gameState !== 'playing') return;
-    if (window.confirm("Are you sure you want to surrender? You will lose the game immediately.")) {
-      socket.emit('resign', gameState.id);
-    }
-  };
-
-  const handleToggleSwapMode = () => {
-    if (!isMyTurn) return;
-    if (isSwapMode) {
-      setIsSwapMode(false);
-      setSwapSelection([]);
-    } else {
-      // Clear placements when entering swap mode
-      setPlacements([]);
-      setSelectedTile(null);
-      setIsSwapMode(true);
-    }
-  };
-
-  const handleTileClickInRack = (tile: any) => {
-    if (!isMyTurn) return;
-    
-    if (isSwapMode) {
-      if (swapSelection.includes(tile.id)) {
-        setSwapSelection(prev => prev.filter(id => id !== tile.id));
+    if (selectedTile && !gameState.board[y][x].tile) {
+      if (selectedTile.value === '?') {
+        setPendingBlankPos({ x, y });
+        setShowBlankModal(true);
       } else {
-        setSwapSelection(prev => [...prev, tile.id]);
+        setPlacements([...placements, { ...selectedTile, x, y }]);
+        setSelectedTile(null);
       }
-    } else {
-      setSelectedTile(tile);
     }
+  };
+
+  const handleSubmit = () => {
+    if (placements.length === 0) return;
+    socket.emit('makeMove', { roomId: gameState.id, placements });
   };
 
   const handleConfirmSwap = () => {
-    socket.emit('swapTiles', {
-      roomId: gameState.id,
-      tileIds: swapSelection
-    });
+    if (swapSelection.length === 0) return;
+    socket.emit('swapTiles', { roomId: gameState.id, tileIds: swapSelection });
+    setIsSwapMode(false);
+    setSwapSelection([]);
+    sounds.playTurnSound();
+  };
+
+  const onSelectBlank = (char: string) => {
+    if (pendingBlankPos && selectedTile) {
+      setPlacements([...placements, { ...selectedTile, char, x: pendingBlankPos.x, y: pendingBlankPos.y }]);
+      setPendingBlankPos(null);
+      setSelectedTile(null);
+      setShowBlankModal(false);
+    }
+  };
+
+  const renderSettingsModal = () => {
+    if (!showSettings) return null;
+    return (
+      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+        <div className="max-w-sm w-full glass-panel shadow-2xl border-white/10 overflow-hidden">
+          <div className="flex justify-between items-center p-6 border-b border-white/5 bg-white/5">
+            <h3 className="text-xl font-black flex items-center gap-2">
+              <Settings className="text-indigo-400" size={20} />
+              {t('settings')}
+            </h3>
+            <button onClick={() => setShowSettings(false)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+              <X size={20} />
+            </button>
+          </div>
+          <div className="p-6 space-y-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-400 uppercase tracking-wider">
+                <Globe size={14} /> {t('language')}
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-1 bg-black/50 rounded-2xl border border-white/5">
+                <button onClick={() => { setLanguage('TH'); localStorage.setItem('gameLanguage', 'TH'); }} className={`py-3 rounded-xl font-bold transition-all ${language === 'TH' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>ไทย</button>
+                <button onClick={() => { setLanguage('EN'); localStorage.setItem('gameLanguage', 'EN'); }} className={`py-3 rounded-xl font-bold transition-all ${language === 'EN' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}>English</button>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-slate-400 uppercase tracking-wider">
+                <Volume2 size={14} /> {t('volume')}
+              </div>
+              <div className="flex justify-between items-center h-12 gap-2 bg-black/80 rounded-2xl border border-white/5">
+                {[1, 2, 3, 4, 5].map((level) => (
+                  <button key={level} onClick={() => handleVolumeChange(level)} className="flex-1 group flex flex-col items-center gap-2">
+                    <div className={`w-full rounded-full transition-all ${volumeLevel >= level ? 'bg-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.4)]' : 'bg-white/10 group-hover:bg-white/20'}`} style={{ height: `${20 + level * 16}%` }} />
+                    <span className={`text-[.75rem] font-black ${volumeLevel === level ? 'text-indigo-400' : 'text-slate-600'}`}>{level === 1 ? t('off') : level}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   if (gameState.gameState === 'waiting') {
     return (
-      <div className="lobby-container animate-fade-in">
+      <div className="lobby-container relative min-h-screen flex items-center justify-center p-4">
+        <button className="absolute top-6 right-6 p-3 bg-white/5 hover:bg-white/10 rounded-2xl border border-white/10 transition-all text-slate-300" onClick={() => setShowSettings(true)}><Settings size={20} /></button>
         <div className="main-card max-w-md w-full glass-panel">
           <div className="text-center mb-6">
-            <h2 className="text-3xl font-black mb-2">Lobby</h2>
-            <div className="inline-block bg-indigo-500/20 text-indigo-300 px-4 py-2 rounded-xl text-2xl font-mono font-bold tracking-widest border border-indigo-500/30">
-              {gameState.id}
-            </div>
-            <p className="text-slate-400 mt-4 text-sm">Share this code with your friend to play</p>
+            <h2 className="text-3xl font-black mb-2">{t('lobbyTitle')}</h2>
+            <div className="inline-block bg-indigo-500/20 text-indigo-300 px-4 py-2 rounded-xl text-2xl font-mono font-bold tracking-widest border border-indigo-500/30">{gameState.id}</div>
+            <p className="text-slate-400 mt-4 text-sm">{t('shareCode')}</p>
           </div>
-          
           <div className="space-y-3 mb-6">
             {gameState.players.map((p: any) => (
               <div key={p.id} className="p-4 bg-black/20 rounded-xl flex justify-between items-center border border-white/5">
                 <span className="font-semibold">{p.name}</span>
-                {p.id === socket.id && (
-                  <span className="text-xs bg-indigo-500 text-white font-bold px-2 py-1 rounded">YOU</span>
-                )}
+                {p.id === socket.id && <span className="text-xs bg-indigo-500 text-white font-bold px-2 py-1 rounded">{t('you')}</span>}
               </div>
             ))}
-            
-            {gameState.players.length === 1 && (
-              <div className="p-4 bg-white/5 rounded-xl border border-dashed border-white/20 text-center animate-pulse text-slate-400">
-                Waiting for player 2...
-              </div>
-            )}
+            {gameState.players.length === 1 && <div className="p-4 bg-white/5 rounded-xl border border-dashed border-white/20 text-center animate-pulse text-slate-400">{t('waitingPlayer')}</div>}
           </div>
-
-          <p className="text-sm text-center text-slate-400 font-semibold mb-6">
-            {gameState.players.length}/2 Players
-          </p>
-          
+          <p className="text-sm text-center text-slate-400 font-semibold mb-6">{gameState.players.length}/2 {t('playersCount')}</p>
           <div className="flex flex-col gap-3">
-            {gameState.players.length >= 2 ? (
-               <button className="btn-primary" onClick={handleStartGame}>Start Game Now</button>
-            ) : null}
-            <button className="btn-secondary" onClick={onLeave}>Leave Room</button>
+            {gameState.players.length >= 2 && <button className="btn-primary" onClick={handleStartGame}>{t('startGame')}</button>}
+            <button className="btn-secondary" onClick={onLeave}>{t('leaveRoom')}</button>
           </div>
         </div>
+        {renderSettingsModal()}
       </div>
     );
   }
@@ -271,233 +304,239 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
 
   return (
     <div className="game-container">
-      <header className="flex justify-between items-center bg-black/20 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
-         <div className="flex items-center gap-4">
-           <h1 className="text-xl font-black text-gradient hidden sm:block">A-MATH</h1>
-           <div className="flex gap-2">
-             <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10 flex items-center gap-2">
-               <span className="text-slate-400">Bag:</span>
-               <span className="font-bold text-white">{gameState.tiles?.length || 0}</span>
-             </div>
-             <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10">
-               Room: <span className="text-indigo-400 font-bold">{gameState.id}</span>
-             </div>
-           </div>
-         </div>
-         <button className="btn-secondary py-2 px-4 text-sm flex items-center gap-2" onClick={onLeave}>
-           <LogOut size={16} />
-           <span className="hidden sm:inline">Leave</span>
-         </button>
+      <header className="relative z-[100] flex justify-between items-center bg-black/20 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
+        <div className="flex items-center gap-4">
+          <h1 className="text-xl font-black text-gradient hidden sm:block">A-MATH</h1>
+          <div className="flex gap-2">
+            <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10 flex items-center gap-2">
+              <span className="text-slate-400">{t('bag')}:</span>
+              <span className="font-bold text-white">{gameState.tiles?.length || 0}</span>
+            </div>
+            <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10">
+              {t('room')}: <span className="text-indigo-400 font-bold">{gameState.id}</span>
+            </div>
+          </div>
+        </div>
+        <div className="relative">
+          <button
+            className="p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all text-slate-300"
+            onClick={() => setShowNavMenu(!showNavMenu)}
+          >
+            <Menu size={20} />
+          </button>
+
+          {showNavMenu && (
+            <>
+              <div className="fixed inset-0 z-[90]" onClick={() => setShowNavMenu(false)} />
+              <div className="absolute right-0 mt-2 w-48 glass-panel shadow-2xl border-white/10 overflow-hidden z-[130] animate-scale-in origin-top-right">
+                <div className="flex flex-col p-2 gap-1">
+                  <button
+                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                    onClick={() => { setShowSettings(true); setShowNavMenu(false); }}
+                  >
+                    <Settings size={18} className="text-indigo-400" />
+                    {t('settings')}
+                  </button>
+                  <button
+                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-red-400 hover:text-white hover:bg-red-500/20 rounded-xl transition-all"
+                    onClick={() => { handleSurrender(); setShowNavMenu(false); }}
+                  >
+                    <Flag size={18} />
+                    {t('surrender')}
+                  </button>
+                  <div className="h-px bg-white/5 my-1" />
+                  <button
+                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                    onClick={() => { onLeave(); setShowNavMenu(false); }}
+                  >
+                    <LogOut size={18} />
+                    {t('leaveRoom')}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
       </header>
 
       <div className="game-layout">
         <aside className="sidebar">
           <div className="players-mobile-row">
             {gameState.players.map((p: any, idx: number) => (
-              <div key={p.id} className={`player-card ${idx === gameState.turnIndex ? 'active' : ''} ${localTimeLeft[idx] < 60000 ? 'low-time' : ''}`}>
+              <div key={p.id} className={`player-card ${idx === gameState.turnIndex ? 'active' : ''} ${localTimeLeft[idx] < 60000 ? 'low-time' : ''} ${p.online === false ? 'opacity-50 grayscale' : ''}`}>
                 <div className="flex flex-col h-full justify-between">
                   <div className="flex justify-between items-start mb-4">
-                    <span className="font-bold text-lg truncate pr-2">{p.name}</span>
-                    {idx === gameState.turnIndex && <span className="turn-badge">Turn</span>}
+                    <div className="flex flex-col">
+                      <span className="font-bold text-lg truncate pr-2">{p.name} {p.id === socket.id ? `(${t('you')})` : ''}</span>
+                      {p.online === false && <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Offline</span>}
+                    </div>
+                    {idx === gameState.turnIndex && <span className="turn-badge">{t('turn')}</span>}
                   </div>
-                  
                   <div className="flex justify-between items-end">
-                    <div>
-                      <div className="text-3xl font-black text-white drop-shadow-md">{p.score}</div>
-                      <div className="text-xs text-slate-400 uppercase font-semibold tracking-wider mt-1">Points</div>
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-xl font-mono font-bold ${idx === gameState.turnIndex ? 'text-indigo-400 animate-pulse' : 'text-slate-500'}`}>
-                        {formatTime(localTimeLeft[idx])}
-                      </div>
-                      <div className="text-[10px] text-slate-500 uppercase font-bold tracking-tighter">Time Left</div>
-                    </div>
+                    <div className="text-sm font-medium text-slate-400">{t('points')}: <span className="text-2xl font-black text-white ml-1">{p.score}</span></div>
+                    <div className="text-right"><div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{t('timeLeft')}</div><div className={`text-xl font-mono font-bold tabular-nums ${localTimeLeft[idx] < 60000 ? 'text-red-500' : 'text-indigo-400'}`}>{formatTime(localTimeLeft[idx])}</div></div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-          
-          <div className="action-buttons mt-auto sm:mt-0">
-             <div className="flex flex-col gap-2 w-full">
-               {isSwapMode ? (
-                 <div className="flex flex-col gap-2">
-                   <div className="text-xs text-center text-amber-400 font-bold uppercase tracking-widest bg-amber-400/10 py-2 rounded-lg border border-amber-400/20">
-                     Swap Mode: Select tiles to return
-                   </div>
-                   <div className="flex gap-2">
-                     <button 
-                       className="btn-secondary flex-1 py-3"
-                       onClick={() => setIsSwapMode(false)}
-                     >
-                       Cancel
-                     </button>
-                     <button 
-                       className="btn-primary flex-1 py-3 bg-amber-600 hover:bg-amber-500 border-amber-500 shadow-amber-500/20"
-                       onClick={handleConfirmSwap}
-                     >
-                       Confirm Swap
-                     </button>
-                   </div>
-                 </div>
-               ) : (
-                 <>
-                   <div className="flex gap-2 w-full justify-between items-center sm:w-auto mb-2">
-                     <button 
-                       className="btn-secondary py-2 px-4 text-sm flex-1"
-                       onClick={() => { setPlacements([]); setSelectedTile(null); }}
-                       disabled={!isMyTurn || placements.length === 0}
-                     >
-                       Clear
-                     </button>
-                     
-                     <button 
-                       className={`py-2 px-4 text-sm font-semibold rounded-xl border transition-all flex-1 ${
-                         isMyTurn 
-                           ? 'bg-amber-500/20 text-amber-500 border-amber-500/30 hover:bg-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.1)]' 
-                           : 'bg-white/5 text-slate-500 border-white/5 cursor-not-allowed'
-                       }`}
-                       onClick={handleToggleSwapMode}
-                       disabled={!isMyTurn}
-                     >
-                       Swap Tiles
-                     </button>
-                   </div>
-                   
-                   <div className="flex gap-2 w-full">
-                     {gameState.isManualCheck && gameState.lastMove && isMyTurn && placements.length === 0 && (
-                       <button 
-                         className="py-2 px-4 text-sm font-semibold rounded-xl bg-red-500/20 text-red-500 border border-red-500/30 hover:bg-red-500/30 transition-all shadow-[0_0_15px_rgba(239,68,68,0.2)] flex-1"
-                         onClick={() => socket.emit('challenge', gameState.id)}
-                       >
-                         Challenge
-                       </button>
-                     )}
-                     
-                     <button 
-                       className="btn-primary py-3 px-6 shadow-indigo flex-1"
-                       onClick={handleSubmitMove}
-                       disabled={!isMyTurn || placements.length === 0}
-                     >
-                       Submit Move
-                     </button>
-                   </div>
-                 </>
-               )}
+
+          <div className="actions-panel mt-4">
+            <div className="flex flex-col gap-4">
+              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                {t('actions')}
+                <span className="w-8 h-px bg-slate-700"></span>
+              </h3>
+
+              <button className="action-btn primary w-full py-5 text-lg font-black tracking-wide" onClick={handleSubmit} disabled={placements.length === 0 || !isMyTurn}>
+                <div className="flex items-center justify-center">
+                  <Check size={24} className="mr-2" /> {t('submitMove')}
+                </div>
+              </button>
+
+              <div className="grid grid-cols-2 gap-3 mt-1">
+                <button className="action-btn secondary py-3" onClick={() => setPlacements([])} disabled={placements.length === 0 || !isMyTurn}>
+                  <div className="flex items-center justify-center">
+                    <RotateCcw size={18} className="mr-1" /> {t('clear')}
+                  </div>
+                </button>
+                <button
+                  className={`action-btn py-3 transition-all ${isSwapMode ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'secondary'}`}
+                  onClick={() => { setIsSwapMode(!isSwapMode); setSwapSelection([]); }}
+                  disabled={!isMyTurn}
+                >
+                  <div className="flex items-center justify-center px-2">
+                    <RotateCcw size={18} className={`mr-1 ${isSwapMode ? 'rotate-45' : ''}`} />
+                    {isSwapMode ? t('cancel') : t('swapTiles')}
+                  </div>
+                </button>
+              </div>
+
+              {isSwapMode && (
+                <button
+                  className="action-btn primary w-full py-4 mt-2 bg-gradient-to-r from-amber-500 to-orange-600 animate-fade-in"
+                  onClick={handleConfirmSwap}
+                  disabled={swapSelection.length === 0}
+                >
+                  <Check size={20} className="mr-2" /> {t('confirmSwap')}
+                </button>
+              )}
+            </div>
+
+            <div className="pt-6 border-t border-white/10 flex flex-col gap-4">
+              <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex justify-between items-center group hover:bg-black/60 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="bag-card-icon">
+                    <span className="text-amber-950 font-black text-sm">#</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-px">{t('bag')}</span>
+                    <span className="text-[10px] text-slate-500 font-medium">Remaining</span>
+                  </div>
+                </div>
+                <span className="text-3xl font-black text-white">{gameState.tiles?.length || 0}</span>
+              </div>
+
+              <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex flex-col justify-center items-center text-center group hover:bg-black/60 transition-colors">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('turn')}</span>
+                <span className={`text-lg font-bold truncate w-full ${isMyTurn ? 'text-indigo-400 animate-pulse drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'text-slate-300'}`}>
+                  {isMyTurn ? t('you').toUpperCase() : gameState.players[gameState.turnIndex].name}
+                </span>
+              </div>
             </div>
           </div>
         </aside>
 
-        <main className="board-area relative">
-          {isBotThinking && (
-            <div className="absolute -top-12 left-1/2 -translate-x-1/2 bg-indigo-500/90 text-white px-6 py-2 rounded-full font-bold shadow-[0_0_20px_rgba(99,102,241,0.5)] flex items-center gap-3 z-10 animate-pulse">
-              <div className="w-2 h-2 bg-white rounded-full animate-bounce delay-75"></div>
-              <div className="w-2 h-2 bg-white rounded-full animate-bounce delay-150"></div>
-              <div className="w-2 h-2 bg-white rounded-full animate-bounce delay-300"></div>
-              <span>Bot is thinking...</span>
-            </div>
-          )}
-          
-          <div className="board-wrapper">
-            <div className="board">
-              {gameState.board.map((row: any, y: number) => (
-                row.map((cell: any, x: number) => {
-                  const placement = placements.find(p => p.x === x && p.y === y);
-                  const tile = cell.tile || placement?.tile;
-                  const specialClass = cell.special ? cell.special.toLowerCase() : '';
-                  
-                  return (
-                    <div 
-                      key={`${x}-${y}`} 
-                      className={`cell ${specialClass} ${x===7 && y===7 ? 'center' : ''}`}
-                      onClick={() => handleCellClick(x, y)}
-                    >
-                      {tile ? (
-                        <div className="tile">
-                          <span className="tile-value">{tile.value}</span>
-                          <span className="tile-score">{tile.score}</span>
-                        </div>
-                      ) : (
-                          <span className="cell-label">{cell.special || ''}</span>
-                      )}
-                    </div>
-                  );
-                })
-              ))}
-            </div>
-          </div>
-          
-          <div className="rack-container">
-            <div className="flex items-center justify-between mb-2 px-2">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                Your Rack <span className="lowercase text-slate-500 ml-1">({myPlayer?.rack.length}/8)</span>
-              </h4>
-              {isMyTurn && <span className="text-xs text-indigo-400 font-semibold animate-pulse">Your Turn!</span>}
-            </div>
-            <div className={`rack ${isSwapMode ? 'swap-mode' : ''}`}>
-               {myPlayer?.rack
-                 .filter((tile: any) => !placements.find(p => p.tile.id === tile.id))
-                 .map((tile: any) => {
-                   const isSelected = isSwapMode 
-                     ? swapSelection.includes(tile.id)
-                     : selectedTile?.id === tile.id;
-                   
-                   return (
-                     <div 
-                       key={tile.id} 
-                       className={`tile rack-tile ${isSelected ? 'active' : ''}`}
-                       onClick={() => handleTileClickInRack(tile)}
-                     >
-                        <span className="tile-value">{tile.value}</span>
-                        <span className="tile-score">{tile.score}</span>
-                        {isSwapMode && isSelected && (
-                          <div className="absolute -top-2 -right-2 bg-amber-500 text-white rounded-full p-0.5 shadow-lg">
-                            <Check size={12} strokeWidth={4} />
-                          </div>
-                        )}
-                     </div>
-                   );
-                 })}
-            </div>
+        <main className="board-area">
+          <div className="board glass-panel">
+            {gameState.board.map((row, y) => row.map((cell, x) => {
+              const placement = placements.find(p => p.x === x && p.y === y);
+              const isSpecial = !cell.tile && cell.special;
+              return (
+                <div key={`${x}-${y}`} className={`cell ${isSpecial ? `special-${cell.special?.toLowerCase()}` : ''}`} onClick={() => handleCellClick(x, y)}>
+                  {cell.tile ? <div className="tile on-board">{cell.tile.char}<span className="tile-value">{cell.tile.value}</span></div> : placement ? <div className="tile placement animate-scale-in">{placement.char}<span className="tile-value">{placement.value}</span></div> : isSpecial && <span className="special-label">{cell.special}</span>}
+                </div>
+              );
+            }))}
           </div>
         </main>
 
-        <aside className="sidebar hidden xl:block">
-           <div className="glass-panel p-5 rounded-2xl h-full">
-             <div className="flex items-center gap-2 mb-4 text-slate-300">
-               <Info size={18} />
-               <h3 className="font-bold uppercase tracking-wider text-sm">Legend</h3>
-             </div>
-             
-              <div className="space-y-4 text-sm font-medium">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-red-600 flex items-center justify-center text-[10px] font-bold">TE</div>
-                  <span className="text-slate-300">Triple Equation (3×)</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-yellow-500 flex items-center justify-center text-[10px] font-bold text-black">DE</div>
-                  <span className="text-slate-300">Double Equation (2×)</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold">TP</div>
-                  <span className="text-slate-300">Triple Piece (3×)</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-[10px] font-bold">DP</div>
-                  <span className="text-slate-300">Double Piece (2×)</span>
-                </div>
-             </div>
-             
-             <div className="mt-8 pt-6 border-t border-white/10 text-xs text-slate-400 space-y-2">
-                <p>• Form equations like crossword puzzle</p>
-                <p>• Must touch game center first turn</p>
-                <p>• Use 8 tiles at once for Bingo (+40)</p>
-             </div>
-           </div>
+        <aside className="actions-sidebar">
+          <div className="legend-panel">
+            <h3 className="section-title"><Info size={14} /> {t('legend')}</h3>
+            <div className="space-y-4">
+              <div className="legend-item"><div className="sq-preview special-te rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('tripleEquation')}</span></div>
+              <div className="legend-item"><div className="sq-preview special-de rounded-md py-1 px-2">x2</div><span className="text-xs font-semibold">{t('doubleEquation')}</span></div>
+              <div className="legend-item"><div className="sq-preview special-tp rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('triplePiece')}</span></div>
+              <div className="legend-item"><div className="sq-preview special-dp rounded-md py-1 px-2">x2</div><span className="text-xs font-semibold">{t('doublePiece')}</span></div>
+            </div>
+          </div>
         </aside>
       </div>
+
+      <div className="rack-area-fixed">
+        <div className="rack-container glass-panel">
+          <div className="max-w-4xl w-full mx-auto">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('yourRack')}</h3>
+              {isMyTurn && <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div><span className="text-[10px] font-black text-indigo-400 uppercase">{t('yourTurn')}</span></div>}
+            </div>
+
+            <div className="rack flex justify-center gap-2 md:gap-3">
+              {myPlayer?.rack
+                .filter((tile: any) => !placements.find(p => p.id === tile.id))
+                .map((tile: any) => {
+                  const isSelected = selectedTile?.id === tile.id;
+                  const isSwapping = swapSelection.includes(tile.id);
+
+                  return (
+                    <div
+                      key={tile.id}
+                      className={`tile rack-tile ${isSelected ? 'active selected' : ''} ${isSwapping ? 'swapping scale-95 opacity-50' : ''}`}
+                      onClick={() => {
+                        if (isSwapMode) {
+                          setSwapSelection(prev =>
+                            prev.includes(tile.id) ? prev.filter(id => id !== tile.id) : [...prev, tile.id]
+                          );
+                        } else {
+                          setSelectedTile(isSelected ? null : tile);
+                        }
+                      }}
+                    >
+                      {tile.char}
+                      <span className="tile-value">{tile.value}</span>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showBlankModal && (
+        <div className="modal-overlay"><div className="modal-content"><h3>Select Character</h3><div className="grid grid-cols-5 gap-2">{['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-', '*', '/', '='].map(c => <button key={c} className="blank-option" onClick={() => onSelectBlank(c)}>{c}</button>)}</div></div></div>
+      )}
+
+      {gameOverInfo && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="max-w-md w-full glass-panel p-8 text-center border-2 border-white/10">
+            {gameOverInfo.winnerId === socket.id ? <><div className="text-6xl mb-6">🏆</div><h2 className="text-4xl font-black text-yellow-400 mb-2">{t('victory')}</h2></> : gameOverInfo.isDraw ? <><div className="text-6xl mb-6">🤝</div><h2 className="text-4xl font-black text-white mb-2">{t('draw')}</h2></> : <><div className="text-6xl mb-6">☹️</div><h2 className="text-4xl font-black text-slate-400 mb-2">{t('defeat')}</h2></>}
+            <p className="text-slate-400 mb-8 italic">"{gameOverInfo.reason}"</p>
+            <div className="space-y-4 mb-8">
+              {gameOverInfo.room.players.map((p: any) => (
+                <div key={p.id} className="flex justify-between items-center p-4 bg-white/5 rounded-xl border border-white/5">
+                  <span className="font-bold text-lg text-slate-200">{p.name} {p.id === socket.id ? `(${t('you')})` : ''}</span>
+                  <span className="text-2xl font-black text-white">{p.score}</span>
+                </div>
+              ))}
+            </div>
+            <button className="btn-primary w-full py-4 text-lg" onClick={onLeave}>{t('returnToLobby')}</button>
+          </div>
+        </div>
+      )}
+      {renderSettingsModal()}
     </div>
   );
-}
+};
 
 export default Game;

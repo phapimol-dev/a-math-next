@@ -1,22 +1,60 @@
 export const validateEquation = (equationStr) => {
   console.log(`[Validator] Validating: "${equationStr}"`);
   
-  // Prevent empty or incredibly short strings
-  if (!equationStr || equationStr.length < 3) {
-    console.log(`[Validator] Rejected: Length too short (${equationStr?.length || 0})`);
-    return false;
+  if (!equationStr || equationStr.length < 3) return false;
+  if (!equationStr.includes("=")) return false;
+
+  // Try all possible interpretations of multi-option tiles (+/- and ×/÷)
+  const combinations = expandEquation(equationStr);
+  
+  for (const combo of combinations) {
+    if (checkSingleEquation(combo)) {
+      console.log(`[Validator] Valid combo found: ${combo}`);
+      return true;
+    }
   }
 
-  // Make sure it contains at least one equals sign
-  const equalsCount = (equationStr.match(/=/g) || []).length;
-  if (equalsCount < 1) {
-    console.log(`[Validator] Rejected: Missing equals sign`);
-    return false;
-  }
+  console.log(`[Validator] All ${combinations.length} combinations failed`);
+  return false;
+};
 
+// Helper: Try all combinations of multi-option tiles
+const expandEquation = (str) => {
+  let list = [str];
+  
+  const expansions = [
+    { token: "+/-", options: ["+", "-"] },
+    { token: "×/÷", options: ["×", "÷"] }
+  ];
+
+  expansions.forEach(({ token, options }) => {
+    let nextList = [];
+    list.forEach(s => {
+      if (s.includes(token)) {
+        let parts = s.split(token);
+        let combinations = [parts[0]];
+        for (let i = 1; i < parts.length; i++) {
+          let nextCombos = [];
+          options.forEach(opt => {
+            combinations.forEach(prev => {
+              nextCombos.push(prev + opt + parts[i]);
+            });
+          });
+          combinations = nextCombos;
+        }
+        nextList.push(...combinations);
+      } else {
+        nextList.push(s);
+      }
+    });
+    list = nextList;
+  });
+
+  return [...new Set(list)]; // Unique combinations
+};
+
+const checkSingleEquation = (equationStr) => {
   // Handle A-Math specific formatting:
-  // "x" or "X" or "×" becomes "*"
-  // "÷" becomes "/"
   const sanitized = equationStr
     .replace(/[xX×]/g, "*")
     .replace(/÷/g, "/");
@@ -26,34 +64,23 @@ export const validateEquation = (equationStr) => {
   try {
     const values = parts.map((part, index) => {
       const trimmed = part.trim();
-      
-      // Basic validation for each part
-      if (!trimmed) {
-        throw new Error(`Part ${index} is empty`);
-      }
+      if (!trimmed) throw new Error("empty");
       
       // Valid starting chars: digit, minus (for negative numbers)
       if (!/^[\d-]/.test(trimmed) || /[+\-*/]$/.test(trimmed)) {
-        throw new Error(`Part ${index} format check failed (start/end operators)`);
+        throw new Error("format");
       }
 
       const val = evalSide(trimmed);
       if (val === null || isNaN(val) || !isFinite(val)) {
-        throw new Error(`Part ${index} evaluation failed`);
+        throw new Error("eval");
       }
       return val;
     });
 
-    console.log(`[Validator] Evaluation values:`, values);
-
-    // All parts must be equal to each other
     const firstValue = values[0];
-    const allEqual = values.every(v => Math.abs(v - firstValue) < 0.0001);
-
-    console.log(`[Validator] Result for "${equationStr}": ${allEqual}`);
-    return allEqual;
+    return values.every(v => Math.abs(v - firstValue) < 0.0001);
   } catch (e) {
-    console.log(`[Validator] Rejected: ${e.message}`);
     return false;
   }
 };

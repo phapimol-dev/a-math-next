@@ -29,15 +29,16 @@ body {
   min-height: 100vh;
   font-family: 'Inter', sans-serif;
   overflow-x: hidden;
+  overscroll-behavior-y: none; /* Prevents pull-to-refresh on mobile */
 }
 
 /* Global Animations & Utilities */
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border: 1px solid var(--glass-border);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .text-gradient {

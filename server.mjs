@@ -132,16 +132,21 @@ const rooms = new Map();
           } else {
              console.log(`[Bot Move] L${room.botDifficulty} found no moves. Swapping tiles.`);
              // Execute Bot Swap (Skip)
-             // Swap up to 3 tiles if possible, or all
-             const swapCount = Math.min(3, currentPlayer.rack.length);
+             // Rule: Only swap if bag has >= 8 tiles
+             const canSwap = room.tiles.length >= 8;
+             const swapCount = canSwap ? Math.min(3, currentPlayer.rack.length) : 0;
              const tilesToSwap = currentPlayer.rack.slice(0, swapCount);
              const tileIds = tilesToSwap.map(t => t.id);
   
-             room.tiles.push(...tilesToSwap);
-             currentPlayer.rack = currentPlayer.rack.filter(t => !tileIds.includes(t.id));
-  
-             const newTiles = drawTiles(room.tiles, tilesToSwap.length);
-             currentPlayer.rack.push(...newTiles);
+             if (swapCount > 0) {
+               room.tiles.push(...tilesToSwap);
+               currentPlayer.rack = currentPlayer.rack.filter(t => !tileIds.includes(t.id));
+    
+               const newTiles = drawTiles(room.tiles, tilesToSwap.length);
+               currentPlayer.rack.push(...newTiles);
+             } else {
+               console.log(`[Bot Move] Bag has < 8 tiles, bot passing instead of swapping.`);
+             }
   
              room.lastMove = null;
              commitTurn(room);
@@ -155,12 +160,15 @@ const rooms = new Map();
   const commitTurn = (room) => {
     if (!room || room.gameState !== "playing") return;
 
-    // Deduct time from the player who just finished
+    // Deduct time from the player who just finished (can be negative)
     const currentPlayer = room.players[room.turnIndex];
     if (room.lastTurnStartTime) {
       const elapsed = Date.now() - room.lastTurnStartTime;
-      currentPlayer.timeLeft = Math.max(0, currentPlayer.timeLeft - elapsed);
+      currentPlayer.timeLeft = currentPlayer.timeLeft - elapsed;
     }
+
+    // Reset overtime penalty counter for the turn
+    currentPlayer.overtimePenaltyCount = 0;
 
     // Switch turn
     room.turnIndex = (room.turnIndex + 1) % room.players.length;
@@ -181,19 +189,18 @@ const rooms = new Map();
       const elapsed = Date.now() - room.lastTurnStartTime;
       const actualTimeLeft = currentPlayer.timeLeft - elapsed;
 
-      if (actualTimeLeft <= 0) {
-        currentPlayer.timeLeft = 0;
-        room.gameState = "finished";
-        const winnerIndex = (room.turnIndex + 1) % room.players.length;
-        const winner = room.players[winnerIndex];
+      if (actualTimeLeft < 0) {
+        const overtimeMs = Math.abs(actualTimeLeft);
+        const expectedPenaltyCount = Math.floor(overtimeMs / 60000); // 1 penalty per minute
         
-        console.log(`[Game Over] Room ${roomId} timed out. ${winner.name} wins!`);
-        io.to(roomId).emit("gameOver", { 
-          room, 
-          reason: "timeout", 
-          winnerId: winner.id,
-          looserName: currentPlayer.name
-        });
+        if (expectedPenaltyCount > (currentPlayer.overtimePenaltyCount || 0)) {
+          const newPenalties = expectedPenaltyCount - (currentPlayer.overtimePenaltyCount || 0);
+          currentPlayer.score -= (newPenalties * 10);
+          currentPlayer.overtimePenaltyCount = expectedPenaltyCount;
+          
+          console.log(`[Penalty] Player "${currentPlayer.name}" in room ${roomId} lost ${newPenalties * 10} pts for overtime.`);
+          io.to(roomId).emit("roomUpdate", room);
+        }
       }
     });
   }, 1000);
@@ -350,6 +357,30 @@ io.on("connection", (socket) => {
           placements: move.placements,
           wasValid: allValid
         };
+
+        // Check for Game Over (Rack is empty AND bag is empty)
+        if (currentPlayer.rack.length === 0 && room.tiles.length === 0) {
+          console.log(`[Game Over] Room ${roomId} finished normally.`);
+          room.gameState = "finished";
+          
+          // Determine winner
+          let winner = room.players[0];
+          let isDraw = false;
+          if (room.players.length > 1) {
+            if (room.players[0].score > room.players[1].score) winner = room.players[0];
+            else if (room.players[1].score > room.players[0].score) winner = room.players[1];
+            else isDraw = true;
+          }
+
+          io.to(roomId).emit("gameOver", { 
+            room, 
+            reason: "normal", 
+            winnerId: isDraw ? null : winner.id,
+            isDraw
+          });
+          if (room.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
+          return; // Skip advancing turn
+        }
         
         commitTurn(room);
         io.to(roomId).emit("moveMade", { room, moveScore });
@@ -415,6 +446,10 @@ io.on("connection", (socket) => {
       const room = rooms.get(roomId);
       if (!room || room.gameState !== "playing") return;
 
+      if (room.tiles.length < 8) {
+        return socket.emit("error", "เบี้ยในถุงต้องมีอย่างน้อย 8 ตัวถึงจะเปลี่ยนได้ (Tiles in bag must be >= 8)");
+      }
+
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== room.turnIndex) return socket.emit("error", "Not your turn");
 
@@ -468,9 +503,24 @@ io.on("connection", (socket) => {
       for (const [roomId, room] of rooms.entries()) {
         const pIdx = room.players.findIndex(p => p.id === socket.id);
         if (pIdx !== -1) {
-          room.players.splice(pIdx, 1);
-          if (room.players.length === 0) rooms.delete(roomId);
-          else io.to(roomId).emit("playerLeft", room);
+          const player = room.players[pIdx];
+          
+          if (room.gameState === "playing") {
+            // Soft disconnect for active games
+            player.online = false;
+            console.log(`[Disconnect] ${player.name} went offline in room ${roomId}`);
+            io.to(roomId).emit("roomUpdate", room);
+          } else {
+            // Hard disconnect for waiting/finished rooms
+            room.players.splice(pIdx, 1);
+            if (room.players.length === 0) {
+              rooms.delete(roomId);
+              console.log(`[Room Deleted] ${roomId} (no players)`);
+            } else {
+              io.to(roomId).emit("playerLeft", room);
+            }
+          }
+
           if (room.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
           break;
         }
