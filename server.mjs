@@ -30,23 +30,25 @@ if (!isPureBackend) {
 
 const server = express();
 
-// Diagnostic Middleware: Log ALL Headers for troubleshooting
 server.use((req, res, next) => {
-  const origin = req.headers.origin || 'none';
-  console.log(`[HTTP DEBUG] ${req.method} ${req.url}`);
-  console.log(`[HTTP DEBUG] Origin: ${origin}`);
+  const origin = req.headers.origin || '*';
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+
   if (req.method === 'OPTIONS') {
-    console.log(`[HTTP DEBUG] Preflight request detected`);
+    return res.sendStatus(200);
   }
+
+  console.log(`[HTTP DEBUG] ${req.method} ${req.url} - Origin: ${origin}`);
   next();
 });
 
-// Global CORS - Mirroring approach
+// Global CORS - Standard middleware as backup
 server.use(cors({
-  origin: true, // Automatically reflect request origin
-  credentials: true,
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
+  origin: true,
+  credentials: true
 }));
 
 // Health check routes
