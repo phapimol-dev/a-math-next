@@ -19,8 +19,13 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
   const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
+    // Connect socket immediately so we can receive real-time lobby updates
+    if (!socket.connected) {
+      socket.connect();
+    }
+
     socket.on('publicRoomsUpdate', (rooms: any[]) => {
-      setPublicRooms(rooms);
+      setPublicRooms(rooms.slice(0, 10)); // Show max 10 rooms
     });
 
     socket.on('roomCreated', (room: any) => {
@@ -38,13 +43,23 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
       alert(msg);
     });
 
-    socket.emit('getPublicRooms');
+    // Request current rooms on connect/reconnect
+    const onConnect = () => {
+      socket.emit('getPublicRooms');
+    };
+    socket.on('connect', onConnect);
+
+    // Also request immediately if already connected
+    if (socket.connected) {
+      socket.emit('getPublicRooms');
+    }
 
     return () => {
       socket.off('publicRoomsUpdate');
       socket.off('roomCreated');
       socket.off('playerJoined');
       socket.off('error');
+      socket.off('connect', onConnect);
     };
   }, [onRoomJoined]);
 

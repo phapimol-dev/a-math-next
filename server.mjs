@@ -201,6 +201,9 @@ const rooms = new Map();
 io.on("connection", (socket) => {
     console.log("A user connected:", socket.id);
 
+    // Auto-send current public rooms on connect
+    socket.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
+
     socket.on("createRoom", ({ playerName, isPublic, isManualCheck }) => {
       const roomId = generateRoomId();
       const room = {
@@ -501,5 +504,6 @@ startApp();
 function getPublicRoomsList(rooms) {
   return Array.from(rooms.values())
     .filter(r => r.isPublic && r.players.length < 2 && r.gameState === "waiting" && !r.isBotRoom)
+    .slice(-10) // Show only 10 most recent rooms
     .map(r => ({ id: r.id, playerCount: r.players.length }));
 }
