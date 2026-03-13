@@ -25,7 +25,8 @@ const httpServer = createServer((req, res) => {
     if (handle) {
       handle(req, res, parsedUrl);
     } else {
-      res.statusCode = 404;
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/plain');
       res.end('A-Math Backend is running (Socket mode)');
     }
   } catch (err) {
