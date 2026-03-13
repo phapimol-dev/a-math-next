@@ -462,22 +462,22 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
                <h3 className="font-bold uppercase tracking-wider text-sm">Legend</h3>
              </div>
              
-             <div className="space-y-4 text-sm font-medium">
+              <div className="space-y-4 text-sm font-medium">
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-rose-600 flex items-center justify-center text-[10px] font-bold">TWS</div>
-                  <span className="text-slate-300">Triple Equation Score</span>
+                  <div className="w-8 h-8 rounded bg-red-600 flex items-center justify-center text-[10px] font-bold">TE</div>
+                  <span className="text-slate-300">Triple Equation (3×)</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-amber-600 flex items-center justify-center text-[10px] font-bold">DWS</div>
-                  <span className="text-slate-300">Double Equation Score</span>
+                  <div className="w-8 h-8 rounded bg-yellow-500 flex items-center justify-center text-[10px] font-bold text-black">DE</div>
+                  <span className="text-slate-300">Double Equation (2×)</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold">TLS</div>
-                  <span className="text-slate-300">Triple Piece Score</span>
+                  <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold">TP</div>
+                  <span className="text-slate-300">Triple Piece (3×)</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded bg-green-600 flex items-center justify-center text-[10px] font-bold">DLS</div>
-                  <span className="text-slate-300">Double Piece Score</span>
+                  <div className="w-8 h-8 rounded bg-orange-500 flex items-center justify-center text-[10px] font-bold">DP</div>
+                  <span className="text-slate-300">Double Piece (2×)</span>
                 </div>
              </div>
              

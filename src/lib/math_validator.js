@@ -7,10 +7,10 @@ export const validateEquation = (equationStr) => {
     return false;
   }
 
-  // Make sure it contains exactly one equals sign
+  // Make sure it contains at least one equals sign
   const equalsCount = (equationStr.match(/=/g) || []).length;
-  if (equalsCount !== 1) {
-    console.log(`[Validator] Rejected: Incorrect number of equals signs (${equalsCount})`);
+  if (equalsCount < 1) {
+    console.log(`[Validator] Rejected: Missing equals sign`);
     return false;
   }
 
@@ -19,52 +19,41 @@ export const validateEquation = (equationStr) => {
   // "÷" becomes "/"
   const sanitized = equationStr
     .replace(/[xX×]/g, "*")
-    .replace(/÷/g, "/")
-    .replace(/=/g, "===");
+    .replace(/÷/g, "/");
 
-  const parts = sanitized.split("===");
-  if (parts.length !== 2) {
-    console.log(`[Validator] Rejected: Could not split into two parts`);
-    return false;
-  }
-
-  // Basic validation: parts shouldn't end with operators or start with arbitrary operators
-  // Valid starting chars: digit, minus (for negative numbers)
-  if (!/^[\d-]/.test(parts[0]) || !/^[\d-]/.test(parts[1])) {
-    console.log(`[Validator] Rejected: Basic format check failed (start/end operators)`);
-    return false;
-  }
-  if (/[+\-*/]$/.test(parts[0]) || /[+\-*/]$/.test(parts[1])) {
-    console.log(`[Validator] Rejected: Basic format check failed (start/end operators)`);
-    return false;
-  }
-
+  const parts = sanitized.split("=");
+  
   try {
-    const leftSide = evalSide(parts[0]);
-    const rightSide = evalSide(parts[1]);
-    
-    console.log(`[Validator] Evaluation: "${parts[0]}" = ${leftSide}, "${parts[1]}" = ${rightSide}`);
+    const values = parts.map((part, index) => {
+      const trimmed = part.trim();
+      
+      // Basic validation for each part
+      if (!trimmed) {
+        throw new Error(`Part ${index} is empty`);
+      }
+      
+      // Valid starting chars: digit, minus (for negative numbers)
+      if (!/^[\d-]/.test(trimmed) || /[+\-*/]$/.test(trimmed)) {
+        throw new Error(`Part ${index} format check failed (start/end operators)`);
+      }
 
-    // Check for null or undefined (eval error), or NaN, or Infinity
-    if (leftSide === null || rightSide === null) {
-      console.log(`[Validator] Rejected: Evaluation returned null`);
-      return false;
-    }
-    if (isNaN(leftSide) || isNaN(rightSide)) {
-      console.log(`[Validator] Rejected: Evaluation returned NaN`);
-      return false;
-    }
-    if (!isFinite(leftSide) || !isFinite(rightSide)) {
-      console.log(`[Validator] Rejected: Evaluation returned non-finite value`);
-      return false;
-    }
+      const val = evalSide(trimmed);
+      if (val === null || isNaN(val) || !isFinite(val)) {
+        throw new Error(`Part ${index} evaluation failed`);
+      }
+      return val;
+    });
 
-    // Use a small epsilon for floating point comparison (e.g., 2/3 = 4/6)
-    const result = Math.abs(leftSide - rightSide) < 0.0001;
-    console.log(`[Validator] Result for "${equationStr}": ${result}`);
-    return result;
+    console.log(`[Validator] Evaluation values:`, values);
+
+    // All parts must be equal to each other
+    const firstValue = values[0];
+    const allEqual = values.every(v => Math.abs(v - firstValue) < 0.0001);
+
+    console.log(`[Validator] Result for "${equationStr}": ${allEqual}`);
+    return allEqual;
   } catch (e) {
-    console.log(`[Validator] Error during validation: ${e.message}`);
+    console.log(`[Validator] Rejected: ${e.message}`);
     return false;
   }
 };
@@ -149,10 +138,10 @@ export const calculateScore = (equations) => {
 
       // Special squares only apply to newly placed tiles
       if (isNew && special) {
-        if (special === 'TLS') tileScore *= 3;
-        else if (special === 'DLS') tileScore *= 2;
-        else if (special === 'TWS') eqMultiplier *= 3;
-        else if (special === 'DWS' || special === 'CENTER') eqMultiplier *= 2; // Center acts as DWS
+        if (special === 'TP') tileScore *= 3;       // Triple Piece: 3× this tile's score
+        else if (special === 'DP') tileScore *= 2;   // Double Piece: 2× this tile's score
+        else if (special === 'TE') eqMultiplier *= 3; // Triple Equation: 3× entire equation
+        else if (special === 'DE' || special === 'CENTER') eqMultiplier *= 2; // Double Equation: 2× entire equation
       }
 
       eqScore += tileScore;
@@ -164,3 +153,4 @@ export const calculateScore = (equations) => {
   // Bingo bonus is not calculated here (requires knowing total placements count in makeMove)
   return totalScore;
 };
+

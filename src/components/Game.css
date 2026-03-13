@@ -92,11 +92,11 @@
   pointer-events: none;
 }
 
-.cell.center { background: #ea580c; } /* Orange 600 */
-.cell.tws { background: #e11d48; color: white; } /* Rose 600 */
-.cell.dws { background: #d97706; color: white; } /* Amber 600 */
-.cell.tls { background: #2563eb; color: white; } /* Blue 600 */
-.cell.dls { background: #16a34a; color: white; } /* Green 600 */
+.cell.center { background: #ea580c; } /* Orange 600 - Center star */
+.cell.te { background: #dc2626; color: white; } /* Red 600 - Triple Equation */
+.cell.de { background: #eab308; color: white; } /* Yellow 500 - Double Equation */
+.cell.tp { background: #2563eb; color: white; } /* Blue 600 - Triple Piece */
+.cell.dp { background: #f97316; color: white; } /* Orange 500 - Double Piece */
 
 .tile {
   width: 100%;
