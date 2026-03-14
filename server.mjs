@@ -39,6 +39,10 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', mode: isPureBackend ? 'socket-only' : 'nextjs' });
 });
 
+app.get('/', (req, res) => {
+  res.status(200).send('A-Math Backend is running');
+});
+
 // --- HTTP Server ---
 const httpServer = createServer(app);
 
