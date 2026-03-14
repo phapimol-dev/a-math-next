@@ -13,6 +13,7 @@ import { sounds } from '../lib/sounds';
 interface GameProps {
   room: any;
   onLeave: () => void;
+  user?: any;
 }
 
 interface GameState {

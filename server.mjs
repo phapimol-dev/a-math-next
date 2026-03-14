@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { createServer } from "http";
 import { parse } from "url";
 import { Server } from "socket.io";
@@ -7,6 +8,13 @@ import { generateTiles, drawTiles } from "./src/lib/tiles.js";
 import { validateEquation, extractEquations, calculateScore } from "./src/lib/math_validator.js";
 import { findBotMove } from "./src/lib/bot_ai.js";
 import fs from "fs";
+import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
+import { connectDB } from "./src/lib/db.js";
+import User from "./src/models/User.js";
+import Match from "./src/models/Match.js";
+
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
@@ -25,6 +33,113 @@ const app = express();
 
 // CORS for non-socket.io routes
 app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
+
+// --- Auth Helper ---
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'No token provided' });
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch {
+    return res.status(403).json({ error: 'Invalid token' });
+  }
+};
+
+// --- Auth API Routes ---
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    if (!username || !email || !password) return res.status(400).json({ error: 'All fields are required' });
+    if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Username must be 3-20 characters' });
+    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+
+    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+    if (existingUser) {
+      return res.status(400).json({ error: existingUser.email === email ? 'Email already in use' : 'Username already taken' });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = await User.create({ username, email, passwordHash });
+    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+
+    console.log(`[Auth] New user registered: ${username}`);
+    res.json({ token, user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
+  } catch (err) {
+    console.error('[Auth] Register error:', err.message);
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+
+    const user = await User.findOne({ email: email.toLowerCase() });
+    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const valid = await bcrypt.compare(password, user.passwordHash);
+    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
+
+    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
+    console.log(`[Auth] User logged in: ${user.username}`);
+    res.json({ token, user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
+  } catch (err) {
+    console.error('[Auth] Login error:', err.message);
+    res.status(500).json({ error: 'Login failed' });
+  }
+});
+
+app.get('/api/auth/me', authenticateToken, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('-passwordHash');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+app.get('/api/user/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-passwordHash -email');
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: { id: user._id, username: user.username, avatar: user.avatar, stats: user.stats } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch user' });
+  }
+});
+
+app.get('/api/user/:id/matches', async (req, res) => {
+  try {
+    const matches = await Match.find({ 'players.userId': req.params.id }).sort({ playedAt: -1 }).limit(20);
+    res.json({ matches });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch matches' });
+  }
+});
+
+app.put('/api/user/profile', authenticateToken, async (req, res) => {
+  try {
+    const { username, avatar } = req.body;
+    const updates = {};
+    if (username) {
+      if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Username must be 3-20 characters' });
+      const existing = await User.findOne({ username, _id: { $ne: req.user.id } });
+      if (existing) return res.status(400).json({ error: 'Username already taken' });
+      updates.username = username;
+    }
+    if (avatar !== undefined) updates.avatar = avatar;
+    const user = await User.findByIdAndUpdate(req.user.id, updates, { new: true }).select('-passwordHash');
+    res.json({ user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
 
 // Logging
 app.use((req, res, next) => {
@@ -227,7 +342,7 @@ io.on("connection", (socket) => {
     // Auto-send current public rooms on connect
     socket.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
 
-    socket.on("createRoom", ({ playerName, isPublic, isManualCheck }) => {
+    socket.on("createRoom", ({ playerName, isPublic, isManualCheck, mongoId }) => {
       const roomId = generateRoomId();
       const room = {
         id: roomId,
@@ -235,12 +350,13 @@ io.on("connection", (socket) => {
         isManualCheck: !!isManualCheck,
         isBotRoom: false,
         lastMove: null,
-        players: [{ id: socket.id, name: playerName, score: 0, rack: [], isBot: false, timeLeft: 22 * 60 * 1000 }],
+        players: [{ id: socket.id, name: playerName, score: 0, rack: [], isBot: false, timeLeft: 22 * 60 * 1000, mongoId: mongoId || null }],
         gameState: "waiting",
         board: createBoard(),
         tiles: generateTiles(),
         turnIndex: 0,
-        lastTurnStartTime: null
+        lastTurnStartTime: null,
+        gameStartTime: null
       };
       rooms.set(roomId, room);
       socket.join(roomId);
@@ -248,7 +364,7 @@ io.on("connection", (socket) => {
       if (isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
     });
 
-    socket.on("createBotRoom", ({ playerName, difficulty, isManualCheck }) => {
+    socket.on("createBotRoom", ({ playerName, difficulty, isManualCheck, mongoId }) => {
       const roomId = generateRoomId();
       const room = {
         id: roomId,
@@ -258,21 +374,22 @@ io.on("connection", (socket) => {
         botDifficulty: difficulty || 2,
         lastMove: null,
         players: [
-          { id: socket.id, name: playerName, score: 0, rack: [], isBot: false, timeLeft: 22 * 60 * 1000 },
-          { id: `bot-${generateRoomId()}`, name: `A-Math Bot (L${difficulty})`, score: 0, rack: [], isBot: true, timeLeft: 22 * 60 * 1000 }
+          { id: socket.id, name: playerName, score: 0, rack: [], isBot: false, timeLeft: 22 * 60 * 1000, mongoId: mongoId || null },
+          { id: `bot-${generateRoomId()}`, name: `A-Math Bot (L${difficulty})`, score: 0, rack: [], isBot: true, timeLeft: 22 * 60 * 1000, mongoId: null }
         ],
         gameState: "waiting",
         board: createBoard(),
         tiles: generateTiles(),
         turnIndex: 0,
-        lastTurnStartTime: null
+        lastTurnStartTime: null,
+        gameStartTime: null
       };
       rooms.set(roomId, room);
       socket.join(roomId);
       socket.emit("roomCreated", room);
     });
 
-    socket.on("joinRoom", ({ roomId, playerName }) => {
+    socket.on("joinRoom", ({ roomId, playerName, mongoId }) => {
       const room = rooms.get(roomId);
       if (!room) return socket.emit("error", "Room not found");
 
@@ -283,13 +400,14 @@ io.on("connection", (socket) => {
         console.log(`[Reconnect] Player "${playerName}" reconnected with new ID ${socket.id} in room ${roomId}`);
         existingPlayer.id = socket.id;
         existingPlayer.online = true;
+        if (mongoId) existingPlayer.mongoId = mongoId;
         socket.join(roomId);
         io.to(roomId).emit("playerJoined", room);
         return;
       }
 
       if (room.players.length < 2) {
-        room.players.push({ id: socket.id, name: playerName, score: 0, rack: [], timeLeft: 22 * 60 * 1000, online: true });
+        room.players.push({ id: socket.id, name: playerName, score: 0, rack: [], timeLeft: 22 * 60 * 1000, online: true, mongoId: mongoId || null });
         socket.join(roomId);
         io.to(roomId).emit("playerJoined", room);
         if (room.isPublic && room.players.length >= 2) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
@@ -408,6 +526,9 @@ io.on("connection", (socket) => {
             winnerId: isDraw ? null : winner.id,
             isDraw
           });
+          // Record match to database
+          const winnerMongoId = isDraw ? null : (winner.mongoId || null);
+          saveMatchResult(room, winnerMongoId, isDraw, 'normal');
           if (room.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
           return; // Skip advancing turn
         }
@@ -526,6 +647,8 @@ io.on("connection", (socket) => {
           winnerId: winner?.id,
           looserName: resigningPlayer?.name || "Someone"
         });
+        // Record match to database
+        saveMatchResult(room, winner?.mongoId || null, false, 'resignation');
         if (room.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
       }
     });
@@ -563,10 +686,61 @@ io.on("connection", (socket) => {
     });
 });
 
+// --- Match Recording Helper ---
+async function saveMatchResult(room, winnerId, isDraw, reason) {
+  try {
+    const matchPlayers = room.players.map(p => ({
+      userId: p.mongoId || null,
+      username: p.name,
+      score: p.score
+    }));
+
+    const duration = room.lastTurnStartTime
+      ? Date.now() - (room.gameStartTime || room.lastTurnStartTime)
+      : 0;
+
+    await Match.create({
+      players: matchPlayers,
+      winnerId: winnerId || null,
+      isDraw: !!isDraw,
+      reason: reason || 'normal',
+      duration
+    });
+
+    // Update user stats
+    for (const p of room.players) {
+      if (!p.mongoId || p.isBot) continue;
+      const update = {
+        $inc: {
+          'stats.gamesPlayed': 1,
+          'stats.totalScore': p.score
+        }
+      };
+      if (isDraw) {
+        update.$inc['stats.draws'] = 1;
+      } else if (p.mongoId === winnerId) {
+        update.$inc['stats.wins'] = 1;
+      } else {
+        update.$inc['stats.losses'] = 1;
+      }
+      const user = await User.findById(p.mongoId);
+      if (user && p.score > (user.stats?.bestScore || 0)) {
+        update.$set = { 'stats.bestScore': p.score };
+      }
+      await User.findByIdAndUpdate(p.mongoId, update);
+    }
+
+    console.log(`[Match] Saved result for room, winner: ${winnerId || 'draw'}`);
+  } catch (err) {
+    console.error('[Match] Failed to save:', err.message);
+  }
+}
+
 // Start the server
 const startApp = async () => {
   try {
-    // Only load Next.js if we're NOT in pure backend mode
+    // Connect to MongoDB
+    await connectDB();
     if (!isPureBackend) {
       console.log("[Boot] Loading Next.js...");
       const nextModule = await import("next");

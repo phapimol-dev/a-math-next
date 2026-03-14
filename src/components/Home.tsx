@@ -2,15 +2,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { socket, connectSocket } from '../socket';
-import { Users, Plus, Hash, RefreshCcw, LogIn, ChevronRight, AlertTriangle, X } from 'lucide-react';
+import { Users, Plus, Hash, RefreshCcw, LogIn, ChevronRight, AlertTriangle, X, LogOut, User, Trophy, Target } from 'lucide-react';
 import './Home.css';
 
 interface HomeProps {
+  user: any;
   onRoomJoined: (room: any) => void;
+  onLogout: () => void;
 }
 
-const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
-  const [playerName, setPlayerName] = useState('');
+const Home: React.FC<HomeProps> = ({ user, onRoomJoined, onLogout }) => {
   const [roomId, setRoomId] = useState('');
   const [isPublic, setIsPublic] = useState(false);
   const [isManualCheck, setIsManualCheck] = useState(false);
@@ -19,6 +20,8 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const playerName = user.username;
+
   useEffect(() => {
     // Connect socket immediately so we can receive real-time lobby updates
     if (!socket.connected) {
@@ -26,7 +29,7 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
     }
 
     socket.on('publicRoomsUpdate', (rooms: any[]) => {
-      setPublicRooms(rooms.slice(0, 10)); // Show max 10 rooms
+      setPublicRooms(rooms.slice(0, 10));
     });
 
     socket.on('roomCreated', (room: any) => {
@@ -44,13 +47,11 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
       setError(msg);
     });
 
-    // Request current rooms on connect/reconnect
     const onConnect = () => {
       socket.emit('getPublicRooms');
     };
     socket.on('connect', onConnect);
 
-    // Also request immediately if already connected
     if (socket.connected) {
       socket.emit('getPublicRooms');
     }
@@ -66,24 +67,22 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
 
   const handleCreateRoom = (e: React.FormEvent, type: 'public' | 'private' | 'bot' = 'public') => {
     e.preventDefault();
-    if (!playerName.trim()) return;
     setIsLoading(true);
     connectSocket(playerName);
 
     if (type === 'bot') {
-      socket.emit('createBotRoom', { playerName, difficulty: botDifficulty, isManualCheck });
+      socket.emit('createBotRoom', { playerName, difficulty: botDifficulty, isManualCheck, mongoId: user.id });
     } else {
-      socket.emit('createRoom', { playerName, isPublic: type === 'public', isManualCheck });
+      socket.emit('createRoom', { playerName, isPublic: type === 'public', isManualCheck, mongoId: user.id });
     }
   };
 
   const handleJoinRoom = (id?: string) => {
     const targetRoomId = id || roomId;
-    if (!playerName.trim()) return setError('Please enter your name');
     if (!targetRoomId.trim()) return setError('Please enter room ID');
     setIsLoading(true);
     connectSocket(playerName);
-    socket.emit('joinRoom', { roomId: targetRoomId.toUpperCase(), playerName });
+    socket.emit('joinRoom', { roomId: targetRoomId.toUpperCase(), playerName, mongoId: user.id });
   };
 
   const refreshPublicRooms = () => {
@@ -92,24 +91,35 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
 
   return (
     <div className="home-container animate-fade-in">
+      {/* User Profile Bar */}
+      <div className="profile-bar glass-panel">
+        <div className="profile-info">
+          <div className="profile-avatar">
+            {user.avatar ? (
+              <img src={user.avatar} alt={user.username} />
+            ) : (
+              <User size={24} />
+            )}
+          </div>
+          <div className="profile-details">
+            <span className="profile-name">{user.username}</span>
+            <div className="profile-stats-mini">
+              <span className="stat-badge win"><Trophy size={12} /> {user.stats?.wins || 0}W</span>
+              <span className="stat-badge loss"><Target size={12} /> {user.stats?.losses || 0}L</span>
+            </div>
+          </div>
+        </div>
+        <button className="logout-btn" onClick={onLogout}>
+          <LogOut size={18} />
+        </button>
+      </div>
+
       <div className="hero-section animate-float">
         <h1 className="text-gradient">A-MATH</h1>
         <p>Mathematical Crossword Board Game</p>
       </div>
 
       <div className="main-card glass-panel">
-        <div className="input-wrapper">
-          <label>Player Name</label>
-          <input
-            type="text"
-            className="modern-input"
-            placeholder="Enter your nickname..."
-            value={playerName}
-            onChange={(e) => setPlayerName(e.target.value)}
-            disabled={isLoading}
-          />
-        </div>
-
         <div className="btn-group">
           <button
             type="button"
