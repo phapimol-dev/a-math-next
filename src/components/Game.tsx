@@ -88,6 +88,10 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
     looserName?: string;
     isDraw?: boolean;
   } | null>(null);
+  const [validationError, setValidationError] = useState<{ failed: string[], all: string[] } | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [botNotification, setBotNotification] = useState<string | null>(null);
+  const [showSurrenderModal, setShowSurrenderModal] = useState(false);
 
   const t = (key: TranslationKey) => translations[language][key] || key;
 
@@ -134,7 +138,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
       }
     };
 
-    const handleMoveMade = ({ room, moveScore }: { room: GameState, moveScore: number }) => {
+    const handleMoveMade = ({ room, moveScore, action, count }: { room: GameState, moveScore: number, action?: string, count?: number }) => {
       setGameState(room);
       setLocalTimeLeft(room.players.map(p => p.timeLeft));
       setPlacements([]);
@@ -142,6 +146,14 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
       setIsSwapMode(false);
       setSwapSelection([]);
       sounds.playTurnSound();
+
+      if (action === 'swap') {
+        setBotNotification(t('botSwapped').replace('{{count}}', String(count)));
+        setTimeout(() => setBotNotification(null), 4000);
+      } else if (action === 'pass') {
+        setBotNotification(t('botPassed'));
+        setTimeout(() => setBotNotification(null), 4000);
+      }
     };
 
     const handleGameOver = ({ room, reason, winnerId, looserName, isDraw }: any) => {
@@ -161,6 +173,8 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
     socket.on('playerLeft', handleRoomUpdate);
     socket.on('gameOver', handleGameOver);
     socket.on('botThinking', (thinking) => setIsBotThinking(thinking));
+    socket.on('moveValidationError', (data) => setValidationError({ failed: data.failedEquations, all: data.allEquations }));
+    socket.on('error', (msg) => setErrorMessage(msg));
 
     return () => {
       socket.off('playerJoined', handleRoomUpdate);
@@ -169,15 +183,15 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
       socket.off('playerLeft', handleRoomUpdate);
       socket.off('gameOver', handleGameOver);
       socket.off('botThinking');
+      socket.off('moveValidationError');
+      socket.off('error');
     };
   }, []);
 
   const handleStartGame = () => socket.emit('startGame', gameState.id);
 
   const handleSurrender = () => {
-    if (window.confirm(t('confirmSurrender'))) {
-      socket.emit('resign', gameState.id);
-    }
+    setShowSurrenderModal(true);
   };
 
   const handleCellClick = (x: number, y: number) => {
@@ -193,7 +207,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
     }
 
     if (selectedTile && !gameState.board[y][x].tile) {
-      if (selectedTile.value === '?') {
+      if (selectedTile.isBlank) {
         setPendingBlankPos({ x, y });
         setShowBlankModal(true);
       } else {
@@ -218,7 +232,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
 
   const onSelectBlank = (char: string) => {
     if (pendingBlankPos && selectedTile) {
-      setPlacements([...placements, { ...selectedTile, char, x: pendingBlankPos.x, y: pendingBlankPos.y }]);
+      setPlacements([...placements, { ...selectedTile, char, value: char, x: pendingBlankPos.x, y: pendingBlankPos.y }]);
       setPendingBlankPos(null);
       setSelectedTile(null);
       setShowBlankModal(false);
@@ -328,7 +342,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
           {showNavMenu && (
             <>
               <div className="fixed inset-0 z-[90]" onClick={() => setShowNavMenu(false)} />
-              <div className="absolute right-0 mt-2 w-48 glass-panel shadow-2xl border-white/10 overflow-hidden z-[130] animate-scale-in origin-top-right">
+              <div className="absolute right-0 mt-2 w-48 bg-black/90 rounded-md shadow-2xl border-white/10 overflow-hidden z-[130] animate-scale-in origin-top-right">
                 <div className="flex flex-col p-2 gap-1">
                   <button
                     className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
@@ -440,7 +454,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
               <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex flex-col justify-center items-center text-center group hover:bg-black/60 transition-colors">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('turn')}</span>
                 <span className={`text-lg font-bold truncate w-full ${isMyTurn ? 'text-indigo-400 animate-pulse drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'text-slate-300'}`}>
-                  {isMyTurn ? t('you').toUpperCase() : gameState.players[gameState.turnIndex].name}
+                  {isMyTurn ? t('you').toUpperCase() : (gameState.players[gameState.turnIndex]?.name || '...')}
                 </span>
               </div>
             </div>
@@ -454,7 +468,15 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
               const isSpecial = !cell.tile && cell.special;
               return (
                 <div key={`${x}-${y}`} className={`cell ${isSpecial ? `special-${cell.special?.toLowerCase()}` : ''}`} onClick={() => handleCellClick(x, y)}>
-                  {cell.tile ? <div className="tile on-board">{cell.tile.char}<span className="tile-value">{cell.tile.value}</span></div> : placement ? <div className="tile placement animate-scale-in">{placement.char}<span className="tile-value">{placement.value}</span></div> : isSpecial && <span className="special-label">{cell.special}</span>}
+                  {cell.tile ? (
+                    <div className={`tile on-board ${cell.tile.isBlank ? 'blank' : ''}`}>
+                      {cell.tile.char}<span className="tile-value">{cell.tile.value}</span>
+                    </div>
+                  ) : placement ? (
+                    <div className={`tile placement animate-scale-in ${placement.isBlank ? 'blank' : ''}`}>
+                      {placement.char}<span className="tile-value">{placement.value}</span>
+                    </div>
+                  ) : isSpecial && <span className="special-label">{cell.special}</span>}
                 </div>
               );
             }))}
@@ -492,7 +514,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
                   return (
                     <div
                       key={tile.id}
-                      className={`tile rack-tile ${isSelected ? 'active selected' : ''} ${isSwapping ? 'swapping scale-95 opacity-50' : ''}`}
+                      className={`tile rack-tile ${tile.isBlank ? 'blank' : ''} ${isSelected ? 'active selected' : ''} ${isSwapping ? 'swapping scale-95 opacity-50' : ''}`}
                       onClick={() => {
                         if (isSwapMode) {
                           setSwapSelection(prev =>
@@ -514,7 +536,35 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
       </div>
 
       {showBlankModal && (
-        <div className="modal-overlay"><div className="modal-content"><h3>Select Character</h3><div className="grid grid-cols-5 gap-2">{['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-', '*', '/', '='].map(c => <button key={c} className="blank-option" onClick={() => onSelectBlank(c)}>{c}</button>)}</div></div></div>
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="max-w-xl w-full glass-panel p-8 shadow-2xl border-white/10">
+            <h3 className="text-2xl font-black mb-6 text-center text-white flex items-center justify-center gap-3">
+              <div className="w-10 h-10 bg-indigo-600 rounded-lg flex items-center justify-center shadow-lg border border-indigo-400/50">?</div>
+              Select Blank Value
+            </h3>
+
+            <div className="space-y-6">
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3 ml-1">Numbers</p>
+                <div className="grid grid-cols-7 gap-2">
+                  {['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20'].map(c => (
+                    <button key={c} className="blank-option-btn number" onClick={() => onSelectBlank(c)}>{c}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mb-3 ml-1">Operators & Equals</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {['+', '-', '×', '÷', '+/-', '×/÷', '='].map(c => (
+                    <button key={c} className={`blank-option-btn operator ${c === '=' ? 'equals' : ''} ${c.length > 1 ? 'text-xs' : ''}`} onClick={() => onSelectBlank(c)}>{c}</button>
+                  ))}
+                  <button className="blank-option-btn secondary col-span-1" onClick={() => setShowBlankModal(false)}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {gameOverInfo && (
@@ -535,6 +585,104 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
         </div>
       )}
       {renderSettingsModal()}
+      
+      {validationError && (
+        <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="max-w-md w-full glass-panel overflow-hidden shadow-2xl border border-white/10">
+            <div className="p-6 bg-red-500/10 border-b border-red-500/20 flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/20 flex items-center justify-center text-red-400">
+                <AlertTriangle size={28} />
+              </div>
+              <div>
+                <h3 className="text-xl font-black text-white">{t('invalidEquation')}</h3>
+                <p className="text-sm text-slate-400">{t('invalidEquationDesc')}</p>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-6">
+              {validationError.all.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">{t('detectedEquations')}</p>
+                  <div className="space-y-2">
+                    {validationError.all.map((eq, i) => {
+                      const isFailed = validationError.failed.includes(eq);
+                      return (
+                        <div key={i} className={`p-4 rounded-xl border flex items-center justify-between transition-all ${isFailed ? 'bg-red-500/10 border-red-500/30 text-red-200' : 'bg-white/5 border-white/10 text-slate-300'}`}>
+                          <span className="font-mono text-lg font-bold tracking-wider">{eq}</span>
+                          {isFailed ? <X className="text-red-500" size={18} /> : <Check className="text-emerald-500" size={18} />}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 bg-white/5 border-t border-white/5">
+              <button 
+                className="w-full btn-primary py-4 text-lg font-bold shadow-xl"
+                onClick={() => setValidationError(null)}
+              >
+                {t('cancel')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[200] px-6 py-4 bg-red-600/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-slide-up">
+          <AlertTriangle size={20} />
+          <span className="font-bold">{errorMessage}</span>
+          <button onClick={() => setErrorMessage(null)} className="ml-2 hover:bg-white/20 p-1 rounded-lg">
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {botNotification && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 bg-indigo-600/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-fade-in shadow-indigo-500/20">
+          <Info size={20} />
+          <span className="font-bold">{botNotification}</span>
+        </div>
+      )}
+
+      {showSurrenderModal && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="max-w-sm w-full glass-panel overflow-hidden shadow-2xl border border-white/10">
+            <div className="p-8 text-center space-y-6">
+              <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto ring-8 ring-red-500/5">
+                <Flag size={40} fill="currentColor" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-2xl font-black text-white">{t('surrender')}?</h3>
+                <p className="text-slate-400 leading-relaxed">
+                  {t('confirmSurrender')}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 pt-4">
+                <button 
+                  className="py-4 rounded-2xl font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all border border-white/5"
+                  onClick={() => setShowSurrenderModal(false)}
+                >
+                  {t('cancel')}
+                </button>
+                <button 
+                  className="py-4 rounded-2xl font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20 transition-all border border-red-500/50"
+                  onClick={() => {
+                    socket.emit('resign', gameState.id);
+                    setShowSurrenderModal(false);
+                  }}
+                >
+                  {t('surrender')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

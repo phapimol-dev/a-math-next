@@ -39,9 +39,12 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', mode: isPureBackend ? 'socket-only' : 'nextjs' });
 });
 
-app.get('/', (req, res) => {
-  res.status(200).send('A-Math Backend is running');
-});
+// Only handle root path in Pure Backend mode, otherwise let Next.js handle it
+if (isPureBackend) {
+  app.get('/', (req, res) => {
+    res.status(200).send('A-Math Backend is running');
+  });
+}
 
 // --- HTTP Server ---
 const httpServer = createServer(app);
@@ -107,7 +110,7 @@ const rooms = new Map();
              
              // Update board
              placements.forEach(p => {
-               room.board[p.y][p.x].tile = p.tile;
+               room.board[p.y][p.x].tile = p.tile || p;
              });
   
              // Calculate score + Bingo
@@ -115,7 +118,7 @@ const rooms = new Map();
              currentPlayer.score += finalScore;
   
              // Draw tiles & Remove used from rack
-             const usedIds = placements.map(p => p.tile.id);
+             const usedIds = placements.map(p => (p.tile || p).id);
              const newTiles = drawTiles(room.tiles, placements.length);
              currentPlayer.rack = [
                ...currentPlayer.rack.filter(t => !usedIds.includes(t.id)),
@@ -132,7 +135,11 @@ const rooms = new Map();
              };
   
              commitTurn(room);
-             io.to(roomId).emit("moveMade", { room, moveScore: finalScore });
+             io.to(roomId).emit("moveMade", { 
+               room, 
+               moveScore: finalScore,
+               action: 'move'
+             });
           } else {
              console.log(`[Bot Move] L${room.botDifficulty} found no moves. Swapping tiles.`);
              // Execute Bot Swap (Skip)
@@ -154,7 +161,12 @@ const rooms = new Map();
   
              room.lastMove = null;
              commitTurn(room);
-             io.to(roomId).emit("moveMade", { room, moveScore: 0 });
+             io.to(roomId).emit("moveMade", { 
+               room, 
+               moveScore: 0,
+               action: swapCount > 0 ? 'swap' : 'pass',
+               count: swapCount
+             });
           }
        }, 500); // UI render delay
     }, 1500); // 1.5s human-like pause before bot starts thinking
@@ -262,13 +274,27 @@ io.on("connection", (socket) => {
 
     socket.on("joinRoom", ({ roomId, playerName }) => {
       const room = rooms.get(roomId);
-      if (room && room.players.length < 2) {
-        room.players.push({ id: socket.id, name: playerName, score: 0, rack: [], timeLeft: 22 * 60 * 1000 });
+      if (!room) return socket.emit("error", "Room not found");
+
+      // Reconnection Logic: Check if a player with this name is already in the room
+      const existingPlayer = room.players.find(p => p.name === playerName);
+      
+      if (existingPlayer) {
+        console.log(`[Reconnect] Player "${playerName}" reconnected with new ID ${socket.id} in room ${roomId}`);
+        existingPlayer.id = socket.id;
+        existingPlayer.online = true;
+        socket.join(roomId);
+        io.to(roomId).emit("playerJoined", room);
+        return;
+      }
+
+      if (room.players.length < 2) {
+        room.players.push({ id: socket.id, name: playerName, score: 0, rack: [], timeLeft: 22 * 60 * 1000, online: true });
         socket.join(roomId);
         io.to(roomId).emit("playerJoined", room);
         if (room.isPublic && room.players.length >= 2) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
       } else {
-        socket.emit("error", room ? "Room is full" : "Room not found");
+        socket.emit("error", "Room is full");
       }
     });
 
@@ -297,6 +323,7 @@ io.on("connection", (socket) => {
       if (!room || room.gameState !== "playing") return;
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== room.turnIndex) return socket.emit("error", "Not your turn");
+      const currentPlayer = room.players[playerIndex];
 
       if (!placements || placements.length === 0) {
         return socket.emit("error", "No tiles placed");
@@ -309,21 +336,20 @@ io.on("connection", (socket) => {
         return socket.emit("error", "Tiles must be placed in a single row or column");
       }
 
-      // Temporarily place tiles on board to extract equations
       placements.forEach(p => {
-        room.board[p.y][p.x].tile = p.tile;
+        room.board[p.y][p.x].tile = p.tile || p;
       });
 
       // Extract all formed equations
-      const equations = extractEquations(room.board, move.placements);
-      console.log(`[Move Made] Room: ${roomId}, Player: "${room.players[playerIndex].name}"`);
+      const equations = extractEquations(room.board, placements);
+      console.log(`[Move Made] Room: ${roomId}, Player: "${currentPlayer.name}"`);
       console.log(`[Move Made] Equations detected: ${equations.map(e => `"${e.string}"`).join(", ")}`);
       
       // If no equations formed (e.g. just placed a single tile not connected to anything)
       if (equations.length === 0) {
         console.log(`[Move Made] Rejected: No equations formed`);
         // Revert board
-        move.placements.forEach(p => room.board[p.y][p.x].tile = null);
+        placements.forEach(p => room.board[p.y][p.x].tile = null);
         return socket.emit("error", "Must form an equation");
       }
 
@@ -341,15 +367,15 @@ io.on("connection", (socket) => {
         
         // Calculate score
         let moveScore = calculateScore(equations);
-        if (move.placements.length >= 8) moveScore += 40; // Bingo bonus
+        if (placements.length >= 8) moveScore += 40; // Bingo bonus
 
-        room.players[playerIndex].score += moveScore;
+        currentPlayer.score += moveScore;
         
         // Draw new tiles
-        const newTiles = drawTiles(room.tiles, move.placements.length);
-        const usedIds = move.placements.map(p => p.tile.id);
-        room.players[playerIndex].rack = [
-          ...room.players[playerIndex].rack.filter(t => !usedIds.includes(t.id)),
+        const newTiles = drawTiles(room.tiles, placements.length);
+        const usedIds = placements.map(p => (p.tile || p).id);
+        currentPlayer.rack = [
+          ...currentPlayer.rack.filter(t => !usedIds.includes(t.id)),
           ...newTiles
         ];
 
@@ -358,7 +384,7 @@ io.on("connection", (socket) => {
           playerIndex,
           scoreGained: moveScore,
           drawnTiles: newTiles,
-          placements: move.placements,
+          placements: placements,
           wasValid: allValid
         };
 
@@ -392,8 +418,12 @@ io.on("connection", (socket) => {
         const failed = validationResults.filter(r => !r.valid).map(r => r.eq);
         console.log(`[Move Made] Failure: Invalid equation(s) - ${failed.join(", ")}`);
         // Revert board if invalid
-        move.placements.forEach(p => room.board[p.y][p.x].tile = null);
-        socket.emit("error", "Invalid equation formed: " + failed.join(", "));
+        placements.forEach(p => room.board[p.y][p.x].tile = null);
+        socket.emit("moveValidationError", { 
+          message: "Invalid equation(s) formed", 
+          failedEquations: failed,
+          allEquations: equations.map(e => e.string)
+        });
       }
     });
 
@@ -427,7 +457,7 @@ io.on("connection", (socket) => {
         // 3. Revert board placements and return tiles to previous player's rack
         lastMove.placements.forEach(p => {
           room.board[p.y][p.x].tile = null;
-          prevPlayer.rack.push(p.tile);
+          prevPlayer.rack.push(p.tile || p);
         });
 
         room.lastMove = null; // Clear last move
@@ -479,6 +509,7 @@ io.on("connection", (socket) => {
       // 4. Advance turn and clear last move (skips can't be challenged)
       room.lastMove = null;
       commitTurn(room);
+      io.to(roomId).emit("moveMade", { room, moveScore: 0, action: 'swap', count: tilesToSwap.length });
     });
 
     socket.on("resign", (roomId) => {

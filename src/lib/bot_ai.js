@@ -121,7 +121,19 @@ function generateValidEquations(tiles) {
   // Separate tile types
   const digits = tiles.filter(t => /^\d$/.test(t.value));
   const operators = tiles.filter(t => /^[+\-x/]$/.test(t.value));
-  const equals = tiles.filter(t => t.value === '=');
+  let equals = tiles.filter(t => t.value === '=');
+  const blanks = tiles.filter(t => t.isBlank);
+
+  // If we have blanks, treat the first blank as common digits or '=' to find moves
+  if (blanks.length > 0) {
+    const firstBlank = blanks[0];
+    ['0', '1'].forEach(v => {
+      digits.push({ ...firstBlank, value: v, isVirtual: true });
+    });
+    if (equals.length === 0) {
+      equals.push({ ...firstBlank, value: '=', isVirtual: true });
+    }
+  }
 
   if (equals.length === 0) return validEquations; // Can't make equations without '='
 
@@ -330,7 +342,7 @@ function getSubsets(arr) {
   const result = [];
   const n = arr.length;
   // Only generate subsets up to size n-1 (leave at least 1 for other side)
-  const limit = Math.min(n, 6); // Cap subset size to prevent combinatorial explosion
+  const limit = Math.min(n, 8); // Allow full rack moves (Bingos)
 
   for (let size = 1; size < n; size++) {
     if (size > limit) break;

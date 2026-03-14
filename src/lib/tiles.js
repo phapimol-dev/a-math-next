@@ -33,7 +33,7 @@ const OFFICIAL_TILE_SET = [
   // Equals
   ...Array(11).fill({ value: "=", score: 1 }),
   // Blanks (wild tiles - player chooses what it represents)
-  ...Array(4).fill({ value: "", score: 0, isBlank: true }),
+  ...Array(4).fill({ value: "", char: "?", score: 0, isBlank: true }),
 ];
 // Total: 5+6+6+5+5+4+4+4+4+4 + 2+1+2+1+1+1+1+1+1+1+1 + 4+4+5+4+4+4 + 11 + 4 = 100
 

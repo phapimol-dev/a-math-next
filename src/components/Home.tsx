@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { socket, connectSocket } from '../socket';
-import { Users, Plus, Hash, RefreshCcw, LogIn, ChevronRight } from 'lucide-react';
+import { Users, Plus, Hash, RefreshCcw, LogIn, ChevronRight, AlertTriangle, X } from 'lucide-react';
 import './Home.css';
 
 interface HomeProps {
@@ -17,6 +17,7 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
   const [botDifficulty, setBotDifficulty] = useState<1 | 2 | 3>(2);
   const [publicRooms, setPublicRooms] = useState<{ id: string, playerCount: number }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     // Connect socket immediately so we can receive real-time lobby updates
@@ -40,7 +41,7 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
 
     socket.on('error', (msg: string) => {
       setIsLoading(false);
-      alert(msg);
+      setError(msg);
     });
 
     // Request current rooms on connect/reconnect
@@ -78,8 +79,8 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
 
   const handleJoinRoom = (id?: string) => {
     const targetRoomId = id || roomId;
-    if (!playerName.trim()) return alert('Please enter your name');
-    if (!targetRoomId.trim()) return alert('Please enter room ID');
+    if (!playerName.trim()) return setError('Please enter your name');
+    if (!targetRoomId.trim()) return setError('Please enter room ID');
     setIsLoading(true);
     connectSocket(playerName);
     socket.emit('joinRoom', { roomId: targetRoomId.toUpperCase(), playerName });
@@ -253,6 +254,16 @@ const Home: React.FC<HomeProps> = ({ onRoomJoined }) => {
           </div>
         </div>
       </div>
+
+      {error && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-4 bg-red-600/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-slide-up">
+          <AlertTriangle size={20} />
+          <span className="font-bold">{error}</span>
+          <button onClick={() => setError(null)} className="ml-2 hover:bg-white/20 p-1 rounded-lg">
+            <X size={16} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

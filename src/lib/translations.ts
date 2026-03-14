@@ -41,7 +41,13 @@ export const translations = {
     volume: "ระดับเสียง",
     off: "ปิด",
     actions: "คำสั่ง",
-    yourTurn: "ตาของคุณแล้ว!"
+    yourTurn: "ตาของคุณแล้ว!",
+    invalidEquation: "สมการไม่ถูกต้อง",
+    invalidEquationDesc: "สมการที่คุณวางไม่ถูกต้องตามหลักคณิตศาสตร์",
+    detectedEquations: "สมการที่ตรวจพบ:",
+    failedEquations: "สมการที่ผิด:",
+    botSwapped: "บอทเปลี่ยนเบี้ย {{count}} ตัว",
+    botPassed: "บอทผ่านเทิร์น"
   },
   EN: {
     lobbyTitle: "Lobby",
@@ -83,7 +89,13 @@ export const translations = {
     volume: "Volume",
     off: "Off",
     actions: "Actions",
-    yourTurn: "It's your turn!"
+    yourTurn: "It's your turn!",
+    invalidEquation: "Invalid Equation",
+    invalidEquationDesc: "The equations you placed are mathematically incorrect.",
+    detectedEquations: "Detected Equations:",
+    failedEquations: "Failed Equations:",
+    botSwapped: "Bot swapped {{count}} tiles",
+    botPassed: "Bot passed"
   }
 };
 
