@@ -288,25 +288,25 @@ io.on("connection", (socket) => {
       }
     });
 
-    socket.on("makeMove", ({ roomId, move }) => {
+    socket.on("makeMove", ({ roomId, placements }) => {
       const room = rooms.get(roomId);
       if (!room || room.gameState !== "playing") return;
       const playerIndex = room.players.findIndex(p => p.id === socket.id);
       if (playerIndex !== room.turnIndex) return socket.emit("error", "Not your turn");
 
-      if (!move.placements || move.placements.length === 0) {
+      if (!placements || placements.length === 0) {
         return socket.emit("error", "No tiles placed");
       }
 
       // Check horizontality / verticality
-      const isHorizontal = move.placements.every(p => p.y === move.placements[0].y);
-      const isVertical = move.placements.every(p => p.x === move.placements[0].x);
-      if (!isHorizontal && !isVertical && move.placements.length > 1) {
+      const isHorizontal = placements.every(p => p.y === placements[0].y);
+      const isVertical = placements.every(p => p.x === placements[0].x);
+      if (!isHorizontal && !isVertical && placements.length > 1) {
         return socket.emit("error", "Tiles must be placed in a single row or column");
       }
 
       // Temporarily place tiles on board to extract equations
-      move.placements.forEach(p => {
+      placements.forEach(p => {
         room.board[p.y][p.x].tile = p.tile;
       });
 
