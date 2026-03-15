@@ -13,7 +13,15 @@ const userSchema = new mongoose.Schema({
     totalScore:  { type: Number, default: 0 },
     gamesPlayed: { type: Number, default: 0 },
     bestScore:   { type: Number, default: 0 }
-  }
+  },
+  friends: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  friendRequests: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }]
 }, { timestamps: true });
 
 export default mongoose.models.User || mongoose.model('User', userSchema);

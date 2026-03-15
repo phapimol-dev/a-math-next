@@ -318,223 +318,228 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
   const isMyTurn = myPlayer?.id === currentPlayer?.id;
 
   return (
-    <div className="game-container">
-      <header className="relative z-[100] flex justify-between items-center bg-black/20 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
-        <div className="flex items-center gap-4">
-          <h1 className="text-xl font-black text-gradient hidden sm:block">A-MATH</h1>
-          <div className="flex gap-2">
-            <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10 flex items-center gap-2">
-              <span className="text-slate-400">{t('bag')}:</span>
-              <span className="font-bold text-white">{gameState.tiles?.length || 0}</span>
-            </div>
-            <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10">
-              {t('room')}: <span className="text-indigo-400 font-bold">{gameState.id}</span>
-            </div>
-          </div>
-        </div>
-        <div className="relative">
-          <button
-            className="p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all text-slate-300"
-            onClick={() => setShowNavMenu(!showNavMenu)}
-          >
-            <Menu size={20} />
-          </button>
-
-          {showNavMenu && (
-            <>
-              <div className="fixed inset-0 z-[90]" onClick={() => setShowNavMenu(false)} />
-              <div className="absolute right-0 mt-2 w-48 bg-black/90 rounded-md shadow-2xl border-white/10 overflow-hidden z-[130] animate-scale-in origin-top-right">
-                <div className="flex flex-col p-2 gap-1">
-                  <button
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-                    onClick={() => { setShowSettings(true); setShowNavMenu(false); }}
-                  >
-                    <Settings size={18} className="text-indigo-400" />
-                    {t('settings')}
-                  </button>
-                  <button
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-red-400 hover:text-white hover:bg-red-500/20 rounded-xl transition-all"
-                    onClick={() => { handleSurrender(); setShowNavMenu(false); }}
-                  >
-                    <Flag size={18} />
-                    {t('surrender')}
-                  </button>
-                  <div className="h-px bg-white/5 my-1" />
-                  <button
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-                    onClick={() => { onLeave(); setShowNavMenu(false); }}
-                  >
-                    <LogOut size={18} />
-                    {t('leaveRoom')}
-                  </button>
-                </div>
+    <>
+      <div className="game-container">
+        <header className="relative z-[100] flex justify-between items-center bg-black/20 p-4 rounded-2xl border border-white/5 backdrop-blur-md">
+          <div className="flex items-center gap-4">
+            <h1 className="text-xl font-black text-gradient hidden sm:block">A-MATH</h1>
+            <div className="flex gap-2">
+              <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10 flex items-center gap-2">
+                <span className="text-slate-400">{t('bag')}:</span>
+                <span className="font-bold text-white">{gameState.tiles?.length || 0}</span>
               </div>
-            </>
-          )}
-        </div>
-      </header>
-
-      <div className="game-layout">
-        <aside className="sidebar">
-          <div className="players-mobile-row">
-            {gameState.players.map((p: any, idx: number) => (
-              <div key={p.id} className={`player-card ${idx === gameState.turnIndex ? 'active' : ''} ${localTimeLeft[idx] < 60000 ? 'low-time' : ''} ${p.online === false ? 'opacity-50 grayscale' : ''}`}>
-                <div className="flex flex-col h-full justify-between">
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="flex flex-col">
-                      <span className="font-bold text-lg truncate pr-2">{p.name} {p.id === socket.id ? `(${t('you')})` : ''}</span>
-                      {p.online === false && <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Offline</span>}
-                    </div>
-                    {idx === gameState.turnIndex && <span className="turn-badge">{t('turn')}</span>}
-                  </div>
-                  <div className="flex justify-between items-end">
-                    <div className="text-sm font-medium text-slate-400">{t('points')}: <span className="text-2xl font-black text-white ml-1">{p.score}</span></div>
-                    <div className="text-right"><div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{t('timeLeft')}</div><div className={`text-xl font-mono font-bold tabular-nums ${localTimeLeft[idx] < 60000 ? 'text-red-500' : 'text-indigo-400'}`}>{formatTime(localTimeLeft[idx])}</div></div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="actions-panel mt-4">
-            <div className="flex flex-col gap-4">
-              <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
-                {t('actions')}
-                <span className="w-8 h-px bg-slate-700"></span>
-              </h3>
-
-              <button className="action-btn primary w-full py-5 text-lg font-black tracking-wide" onClick={handleSubmit} disabled={placements.length === 0 || !isMyTurn}>
-                <div className="flex items-center justify-center">
-                  <Check size={24} className="mr-2" /> {t('submitMove')}
-                </div>
-              </button>
-
-              <div className="grid grid-cols-2 gap-3 mt-1">
-                <button className="action-btn secondary py-3" onClick={() => setPlacements([])} disabled={placements.length === 0 || !isMyTurn}>
-                  <div className="flex items-center justify-center">
-                    <RotateCcw size={18} className="mr-1" /> {t('clear')}
-                  </div>
-                </button>
-                <button
-                  className={`action-btn py-3 transition-all ${isSwapMode ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'secondary'}`}
-                  onClick={() => { setIsSwapMode(!isSwapMode); setSwapSelection([]); }}
-                  disabled={!isMyTurn}
-                >
-                  <div className="flex items-center justify-center px-2">
-                    <RotateCcw size={18} className={`mr-1 ${isSwapMode ? 'rotate-45' : ''}`} />
-                    {isSwapMode ? t('cancel') : t('swapTiles')}
-                  </div>
-                </button>
-              </div>
-
-              {isSwapMode && (
-                <button
-                  className="action-btn primary w-full py-4 mt-2 bg-gradient-to-r from-amber-500 to-orange-600 animate-fade-in"
-                  onClick={handleConfirmSwap}
-                  disabled={swapSelection.length === 0}
-                >
-                  <Check size={20} className="mr-2" /> {t('confirmSwap')}
-                </button>
-              )}
-            </div>
-
-            <div className="pt-6 border-t border-white/10 flex flex-col gap-4">
-              <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex justify-between items-center group hover:bg-black/60 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="bag-card-icon">
-                    <span className="text-amber-950 font-black text-sm">#</span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-px">{t('bag')}</span>
-                    <span className="text-[10px] text-slate-500 font-medium">Remaining</span>
-                  </div>
-                </div>
-                <span className="text-3xl font-black text-white">{gameState.tiles?.length || 0}</span>
-              </div>
-
-              <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex flex-col justify-center items-center text-center group hover:bg-black/60 transition-colors">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('turn')}</span>
-                <span className={`text-lg font-bold truncate w-full ${isMyTurn ? 'text-indigo-400 animate-pulse drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'text-slate-300'}`}>
-                  {isMyTurn ? t('you').toUpperCase() : (gameState.players[gameState.turnIndex]?.name || '...')}
-                </span>
+              <div className="bg-white/10 px-3 py-1 rounded-lg text-sm font-mono border border-white/10">
+                {t('room')}: <span className="text-indigo-400 font-bold">{gameState.id}</span>
               </div>
             </div>
           </div>
-        </aside>
+          <div className="relative">
+            <button
+              className="p-3 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 transition-all text-slate-300"
+              onClick={() => setShowNavMenu(!showNavMenu)}
+            >
+              <Menu size={20} />
+            </button>
 
-        <main className="board-area">
-          <div className="board glass-panel">
-            {gameState.board.map((row, y) => row.map((cell, x) => {
-              const placement = placements.find(p => p.x === x && p.y === y);
-              const isSpecial = !cell.tile && cell.special;
-              return (
-                <div key={`${x}-${y}`} className={`cell ${isSpecial ? `special-${cell.special?.toLowerCase()}` : ''}`} onClick={() => handleCellClick(x, y)}>
-                  {cell.tile ? (
-                    <div className={`tile on-board ${cell.tile.isBlank ? 'blank' : ''}`}>
-                      {cell.tile.char}<span className="tile-value">{cell.tile.value}</span>
-                    </div>
-                  ) : placement ? (
-                    <div className={`tile placement animate-scale-in ${placement.isBlank ? 'blank' : ''}`}>
-                      {placement.char}<span className="tile-value">{placement.value}</span>
-                    </div>
-                  ) : isSpecial && <span className="special-label">{cell.special}</span>}
-                </div>
-              );
-            }))}
-          </div>
-        </main>
-
-        <aside className="actions-sidebar">
-          <div className="legend-panel">
-            <h3 className="section-title"><Info size={14} /> {t('legend')}</h3>
-            <div className="space-y-4">
-              <div className="legend-item"><div className="sq-preview special-te rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('tripleEquation')}</span></div>
-              <div className="legend-item"><div className="sq-preview special-de rounded-md py-1 px-2">x2</div><span className="text-xs font-semibold">{t('doubleEquation')}</span></div>
-              <div className="legend-item"><div className="sq-preview special-tp rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('triplePiece')}</span></div>
-              <div className="legend-item"><div className="sq-preview special-dp rounded-md py-1 px-2">x2</div><span className="text-xs font-semibold">{t('doublePiece')}</span></div>
-            </div>
-          </div>
-        </aside>
-      </div>
-
-      <div className="rack-area-fixed">
-        <div className="rack-container glass-panel">
-          <div className="max-w-4xl w-full mx-auto">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('yourRack')}</h3>
-              {isMyTurn && <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div><span className="text-[10px] font-black text-indigo-400 uppercase">{t('yourTurn')}</span></div>}
-            </div>
-
-            <div className="rack flex justify-center gap-2 md:gap-3">
-              {myPlayer?.rack
-                .filter((tile: any) => !placements.find(p => p.id === tile.id))
-                .map((tile: any) => {
-                  const isSelected = selectedTile?.id === tile.id;
-                  const isSwapping = swapSelection.includes(tile.id);
-
-                  return (
-                    <div
-                      key={tile.id}
-                      className={`tile rack-tile ${tile.isBlank ? 'blank' : ''} ${isSelected ? 'active selected' : ''} ${isSwapping ? 'swapping scale-95 opacity-50' : ''}`}
-                      onClick={() => {
-                        if (isSwapMode) {
-                          setSwapSelection(prev =>
-                            prev.includes(tile.id) ? prev.filter(id => id !== tile.id) : [...prev, tile.id]
-                          );
-                        } else {
-                          setSelectedTile(isSelected ? null : tile);
-                        }
-                      }}
+            {showNavMenu && (
+              <>
+                <div className="fixed inset-0 z-[90]" onClick={() => setShowNavMenu(false)} />
+                <div className="absolute right-0 mt-2 w-48 bg-black/90 rounded-md shadow-2xl border-white/10 overflow-hidden z-[130] animate-scale-in origin-top-right">
+                  <div className="flex flex-col p-2 gap-1">
+                    <button
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-300 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                      onClick={() => { setShowSettings(true); setShowNavMenu(false); }}
                     >
-                      {tile.char}
-                      <span className="tile-value">{tile.value}</span>
+                      <Settings size={18} className="text-indigo-400" />
+                      {t('settings')}
+                    </button>
+                    <button
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-red-400 hover:text-white hover:bg-red-500/20 rounded-xl transition-all"
+                      onClick={() => { handleSurrender(); setShowNavMenu(false); }}
+                    >
+                      <Flag size={18} />
+                      {t('surrender')}
+                    </button>
+                    <div className="h-px bg-white/5 my-1" />
+                    <button
+                      className="flex items-center gap-3 px-4 py-3 text-sm font-semibold text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                      onClick={() => { onLeave(); setShowNavMenu(false); }}
+                    >
+                      <LogOut size={18} />
+                      {t('leaveRoom')}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </header>
+
+        <div className="game-layout">
+          <aside className="sidebar">
+            <div className="players-mobile-row">
+              {gameState.players.map((p: any, idx: number) => (
+                <div key={p.id} className={`player-card ${idx === gameState.turnIndex ? 'active' : ''} ${localTimeLeft[idx] < 60000 ? 'low-time' : ''} ${p.online === false ? 'opacity-50 grayscale' : ''}`}>
+                  <div className="flex flex-col h-full justify-between">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex flex-col">
+                        <span className="font-bold text-lg truncate pr-2">{p.name} {p.id === socket.id ? `(${t('you')})` : ''}</span>
+                        {p.online === false && <span className="text-[10px] font-black text-red-500 uppercase tracking-widest animate-pulse">Offline</span>}
+                      </div>
+                      {idx === gameState.turnIndex && <span className="turn-badge">{t('turn')}</span>}
                     </div>
-                  );
-                })}
+                    <div className="flex justify-between items-end">
+                      <div className="text-sm font-medium text-slate-400">{t('points')}: <span className="text-2xl font-black text-white ml-1">{p.score}</span></div>
+                      <div className="text-right"><div className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter">{t('timeLeft')}</div><div className={`text-xl font-mono font-bold tabular-nums ${localTimeLeft[idx] < 60000 ? 'text-red-500' : 'text-indigo-400'}`}>{formatTime(localTimeLeft[idx])}</div></div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="actions-panel mt-4">
+              <div className="flex flex-col gap-4">
+                <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                  {t('actions')}
+                  <span className="w-8 h-px bg-slate-700"></span>
+                </h3>
+
+                <button className="action-btn primary w-full py-5 text-lg font-black tracking-wide" onClick={handleSubmit} disabled={placements.length === 0 || !isMyTurn}>
+                  <div className="flex items-center justify-center">
+                    <Check size={24} className="mr-2" /> {t('submitMove')}
+                  </div>
+                </button>
+
+                <div className="grid grid-cols-2 gap-3 mt-1">
+                  <button className="action-btn secondary py-3" onClick={() => setPlacements([])} disabled={placements.length === 0 || !isMyTurn}>
+                    <div className="flex items-center justify-center">
+                      <RotateCcw size={18} className="mr-1" /> {t('clear')}
+                    </div>
+                  </button>
+                  <button
+                    className={`action-btn py-3 transition-all ${isSwapMode ? 'bg-amber-500/20 text-amber-400 border-amber-500/50' : 'secondary'}`}
+                    onClick={() => { setIsSwapMode(!isSwapMode); setSwapSelection([]); }}
+                    disabled={!isMyTurn}
+                  >
+                    <div className="flex items-center justify-center px-2">
+                      <RotateCcw size={18} className={`mr-1 ${isSwapMode ? 'rotate-45' : ''}`} />
+                      {isSwapMode ? t('cancel') : t('swapTiles')}
+                    </div>
+                  </button>
+                </div>
+
+                {isSwapMode && (
+                  <button
+                    className="action-btn primary w-full py-4 mt-2 bg-gradient-to-r from-amber-500 to-orange-600 animate-fade-in"
+                    onClick={handleConfirmSwap}
+                    disabled={swapSelection.length === 0}
+                  >
+                    <Check size={20} className="mr-2" /> {t('confirmSwap')}
+                  </button>
+                )}
+              </div>
+
+              <div className="pt-6 border-t border-white/10 flex flex-col gap-4">
+                <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex justify-between items-center group hover:bg-black/60 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="bag-card-icon">
+                      <span className="text-amber-950 font-black text-sm">#</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-px">{t('bag')}</span>
+                      <span className="text-[10px] text-slate-500 font-medium">Remaining</span>
+                    </div>
+                  </div>
+                  <span className="text-3xl font-black text-white">{gameState.tiles?.length || 0}</span>
+                </div>
+
+                <div className="bg-black/40 rounded-xl p-4 border border-white/5 flex flex-col justify-center items-center text-center group hover:bg-black/60 transition-colors">
+                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('turn')}</span>
+                  <span className={`text-lg font-bold truncate w-full ${isMyTurn ? 'text-indigo-400 animate-pulse drop-shadow-[0_0_8px_rgba(99,102,241,0.5)]' : 'text-slate-300'}`}>
+                    {isMyTurn ? t('you').toUpperCase() : (gameState.players[gameState.turnIndex]?.name || '...')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <main className="board-area">
+            <div className="board glass-panel">
+              {gameState.board.map((row, y) => row.map((cell, x) => {
+                const placement = placements.find(p => p.x === x && p.y === y);
+                const isSpecial = !cell.tile && cell.special;
+                return (
+                  <div key={`${x}-${y}`} className={`cell ${isSpecial ? `special-${cell.special?.toLowerCase()}` : ''}`} onClick={() => handleCellClick(x, y)}>
+                    {cell.tile ? (
+                      <div className={`tile on-board ${cell.tile.isBlank ? 'blank' : ''}`}>
+                        {cell.tile.char}<span className="tile-value">{cell.tile.value}</span>
+                      </div>
+                    ) : placement ? (
+                      <div className={`tile placement animate-scale-in ${placement.isBlank ? 'blank' : ''}`}>
+                        {placement.char}<span className="tile-value">{placement.value}</span>
+                      </div>
+                    ) : isSpecial && <span className="special-label">{cell.special}</span>}
+                  </div>
+                );
+              }))}
+            </div>
+          </main>
+
+          <aside className="actions-sidebar">
+            <div className="legend-panel">
+              <h3 className="section-title"><Info size={14} /> {t('legend')}</h3>
+              <div className="space-y-4">
+                <div className="legend-item"><div className="sq-preview special-te rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('tripleEquation')}</span></div>
+                <div className="legend-item"><div className="sq-preview special-de rounded-md py-1 px-2">x2</div><span className="text-xs font-semibold">{t('doubleEquation')}</span></div>
+                <div className="legend-item"><div className="sq-preview special-tp rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('triplePiece')}</span></div>
+                <div className="legend-item"><div className="sq-preview special-dp rounded-md py-1 px-2">x2</div><span className="text-xs font-semibold">{t('doublePiece')}</span></div>
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div className="rack-area-fixed">
+          <div className="rack-container glass-panel">
+            <div className="max-w-4xl w-full mx-auto">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('yourRack')}</h3>
+                {isMyTurn && <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div><span className="text-[10px] font-black text-indigo-400 uppercase">{t('yourTurn')}</span></div>}
+              </div>
+
+              <div className="rack flex justify-center gap-2 md:gap-3">
+                {myPlayer?.rack
+                  .filter((tile: any) => !placements.find(p => p.id === tile.id))
+                  .map((tile: any) => {
+                    const isSelected = selectedTile?.id === tile.id;
+                    const isSwapping = swapSelection.includes(tile.id);
+
+                    return (
+                      <div
+                        key={tile.id}
+                        className={`tile rack-tile ${tile.isBlank ? 'blank' : ''} ${isSelected ? 'active selected' : ''} ${isSwapping ? 'swapping scale-95 opacity-50' : ''}`}
+                        onClick={() => {
+                          if (isSwapMode) {
+                            setSwapSelection(prev =>
+                              prev.includes(tile.id) ? prev.filter(id => id !== tile.id) : [...prev, tile.id]
+                            );
+                          } else {
+                            setSelectedTile(isSelected ? null : tile);
+                          }
+                        }}
+                      >
+                        {tile.char}
+                        <span className="tile-value">{tile.value}</span>
+                      </div>
+                    );
+                  })}
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Modals outside game-container to avoid animation transform containing block issues */}
+      {renderSettingsModal()}
 
       {showBlankModal && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
@@ -585,8 +590,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
           </div>
         </div>
       )}
-      {renderSettingsModal()}
-      
+
       {validationError && (
         <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="max-w-md w-full glass-panel overflow-hidden shadow-2xl border border-white/10">
@@ -599,7 +603,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
                 <p className="text-sm text-slate-400">{t('invalidEquationDesc')}</p>
               </div>
             </div>
-            
+
             <div className="p-6 space-y-6">
               {validationError.all.length > 0 && (
                 <div className="space-y-3">
@@ -620,7 +624,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
             </div>
 
             <div className="p-6 bg-white/5 border-t border-white/5">
-              <button 
+              <button
                 className="w-full btn-primary py-4 text-lg font-bold shadow-xl"
                 onClick={() => setValidationError(null)}
               >
@@ -655,7 +659,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
               <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center text-red-500 mx-auto ring-8 ring-red-500/5">
                 <Flag size={40} fill="currentColor" />
               </div>
-              
+
               <div className="space-y-2">
                 <h3 className="text-2xl font-black text-white">{t('surrender')}?</h3>
                 <p className="text-slate-400 leading-relaxed">
@@ -664,13 +668,13 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-4">
-                <button 
+                <button
                   className="py-4 rounded-2xl font-bold text-slate-400 hover:text-white hover:bg-white/5 transition-all border border-white/5"
                   onClick={() => setShowSurrenderModal(false)}
                 >
                   {t('cancel')}
                 </button>
-                <button 
+                <button
                   className="py-4 rounded-2xl font-bold bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-900/20 transition-all border border-red-500/50"
                   onClick={() => {
                     socket.emit('resign', gameState.id);
@@ -684,7 +688,7 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

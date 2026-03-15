@@ -50,100 +50,102 @@ const Auth: React.FC<AuthProps> = ({ onAuthenticated }) => {
   };
 
   return (
-    <div className="auth-container animate-fade-in">
-      <div className="auth-hero">
-        <h1 className="text-gradient">A-MATH</h1>
-        <p>Mathematical Crossword Board Game</p>
-      </div>
-
-      <div className="auth-card glass-panel">
-        <div className="auth-tabs">
-          <button
-            className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
-            onClick={() => { setMode('login'); setError(null); }}
-          >
-            เข้าสู่ระบบ
-          </button>
-          <button
-            className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
-            onClick={() => { setMode('register'); setError(null); }}
-          >
-            สมัครสมาชิก
-          </button>
+    <>
+      <div className="auth-container animate-fade-in">
+        <div className="auth-hero">
+          <h1 className="text-gradient">A-MATH</h1>
+          <p>Mathematical Crossword Board Game</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="auth-form">
-          {mode === 'register' && (
+        <div className="auth-card glass-panel">
+          <div className="auth-tabs">
+            <button
+              className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
+              onClick={() => { setMode('login'); setError(null); }}
+            >
+              เข้าสู่ระบบ
+            </button>
+            <button
+              className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
+              onClick={() => { setMode('register'); setError(null); }}
+            >
+              สมัครสมาชิก
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="auth-form">
+            {mode === 'register' && (
+              <div className="auth-input-group">
+                <User size={18} className="auth-input-icon" />
+                <input
+                  type="text"
+                  placeholder="ชื่อผู้ใช้ (3-20 ตัวอักษร)"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  className="auth-input"
+                  required
+                  minLength={3}
+                  maxLength={20}
+                  disabled={isLoading}
+                />
+              </div>
+            )}
+
             <div className="auth-input-group">
-              <User size={18} className="auth-input-icon" />
+              <Mail size={18} className="auth-input-icon" />
               <input
-                type="text"
-                placeholder="ชื่อผู้ใช้ (3-20 ตัวอักษร)"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
+                type="email"
+                placeholder="อีเมล"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
                 className="auth-input"
                 required
-                minLength={3}
-                maxLength={20}
                 disabled={isLoading}
               />
             </div>
-          )}
 
-          <div className="auth-input-group">
-            <Mail size={18} className="auth-input-icon" />
-            <input
-              type="email"
-              placeholder="อีเมล"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              className="auth-input"
-              required
-              disabled={isLoading}
-            />
-          </div>
-
-          <div className="auth-input-group">
-            <Lock size={18} className="auth-input-icon" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              className="auth-input"
-              required
-              minLength={6}
-              disabled={isLoading}
-            />
-            <div className='justify-end items-center'>
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-              >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+            <div className="auth-input-group">
+              <Lock size={18} className="auth-input-icon" />
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder="รหัสผ่าน (อย่างน้อย 6 ตัว)"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="auth-input"
+                required
+                minLength={6}
+                disabled={isLoading}
+              />
+              <div className='justify-end items-center'>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
-          </div>
 
-          <button type="submit" className="auth-submit" disabled={isLoading}>
-            {isLoading ? (
-              <div className="auth-spinner" />
+            <button type="submit" className="auth-submit" disabled={isLoading}>
+              {isLoading ? (
+                <div className="auth-spinner" />
+              ) : (
+                <>
+                  {mode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}
+                  <ChevronRight size={20} />
+                </>
+              )}
+            </button>
+          </form>
+
+          <p className="auth-switch">
+            {mode === 'login' ? (
+              <>ยังไม่มีบัญชี? <button onClick={() => { setMode('register'); setError(null); }}>สมัครเลย</button></>
             ) : (
-              <>
-                {mode === 'login' ? 'เข้าสู่ระบบ' : 'สมัครสมาชิก'}
-                <ChevronRight size={20} />
-              </>
+              <>มีบัญชีแล้ว? <button onClick={() => { setMode('login'); setError(null); }}>เข้าสู่ระบบ</button></>
             )}
-          </button>
-        </form>
-
-        <p className="auth-switch">
-          {mode === 'login' ? (
-            <>ยังไม่มีบัญชี? <button onClick={() => { setMode('register'); setError(null); }}>สมัครเลย</button></>
-          ) : (
-            <>มีบัญชีแล้ว? <button onClick={() => { setMode('login'); setError(null); }}>เข้าสู่ระบบ</button></>
-          )}
-        </p>
+          </p>
+        </div>
       </div>
 
       {error && (
@@ -153,7 +155,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthenticated }) => {
           <button onClick={() => setError(null)}><X size={16} /></button>
         </div>
       )}
-    </div>
+    </>
   );
 };
 

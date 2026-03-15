@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { socket, connectSocket } from '../socket';
-import { Users, Plus, Hash, RefreshCcw, LogIn, ChevronRight, AlertTriangle, X, LogOut, User, Trophy, Target } from 'lucide-react';
+import { Users, Plus, Hash, RefreshCcw, LogIn, ChevronRight, AlertTriangle, X, LogOut, User, Trophy, Target, Search } from 'lucide-react';
+import UserProfileModal from './UserProfileModal';
 import './Home.css';
 
 interface HomeProps {
@@ -19,6 +20,12 @@ const Home: React.FC<HomeProps> = ({ user, onRoomJoined, onLogout }) => {
   const [publicRooms, setPublicRooms] = useState<{ id: string, playerCount: number }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Social State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
 
   const playerName = user.username;
 
@@ -89,8 +96,33 @@ const Home: React.FC<HomeProps> = ({ user, onRoomJoined, onLogout }) => {
     socket.emit('getPublicRooms');
   };
 
+  // Search Logic
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(async () => {
+      if (searchQuery.length >= 2) {
+        try {
+          setSearchLoading(true);
+          const res = await fetch(`/api/users/search?q=${encodeURIComponent(searchQuery)}`);
+          if (res.ok) {
+            const data = await res.json();
+            setSearchResults(data);
+          }
+        } catch (err) {
+          console.error(err);
+        } finally {
+          setSearchLoading(false);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    }, 500);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
   return (
-    <div className="home-container animate-fade-in">
+    <>
+      <div className="home-container animate-fade-in">
       {/* User Profile Bar */}
       <div className="profile-bar glass-panel">
         <div className="profile-info">
@@ -265,16 +297,143 @@ const Home: React.FC<HomeProps> = ({ user, onRoomJoined, onLogout }) => {
         </div>
       </div>
 
-      {error && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-4 bg-red-600/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-slide-up">
-          <AlertTriangle size={20} />
-          <span className="font-bold">{error}</span>
-          <button onClick={() => setError(null)} className="ml-2 hover:bg-white/20 p-1 rounded-lg">
-            <X size={16} />
-          </button>
+      {/* Social & Search Section */}
+      <div className="main-card glass-panel mt-6">
+        <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+          <Users className="text-indigo-400" />
+          Friends & Search
+        </h3>
+        
+        <div className="relative mb-6">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <Search size={18} className="text-slate-400" />
+          </div>
+          <input
+            type="text"
+            className="modern-input pl-10 bg-black/40 border-slate-700 w-full text-sm"
+            placeholder="Search players by exact or partial username..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchLoading && (
+            <div className="absolute inset-y-0 right-3 flex items-center">
+              <RefreshCcw size={16} className="text-indigo-400 animate-spin" />
+            </div>
+          )}
         </div>
-      )}
+
+        {/* Search Results */}
+        {searchQuery.length >= 2 && (
+          <div className="bg-black/40 rounded-xl overflow-hidden mb-6 border border-white/5">
+            <div className="px-4 py-2 bg-white/5 border-b border-white/5 text-xs font-bold text-slate-400 uppercase tracking-wider">
+              Search Results
+            </div>
+            {searchResults.length > 0 ? (
+              <div className="divide-y divide-white/5 max-h-48 overflow-y-auto custom-scrollbar">
+                {searchResults.map(result => (
+                  <button 
+                    key={result._id}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-indigo-500/20 transition-colors text-left"
+                    onClick={() => setSelectedUserId(result._id)}
+                  >
+                    <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center shrink-0 border border-indigo-400/30 overflow-hidden">
+                      {result.avatar ? <img src={result.avatar} alt="avatar" className="w-full h-full object-cover" /> : <User size={16} className="text-white" />}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-200">{result.username}</div>
+                      <div className="text-xs text-slate-500 line-clamp-1">W: {result.stats?.wins || 0} / L: {result.stats?.losses || 0}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="p-4 text-center text-slate-500 text-sm">
+                No players found matching "{searchQuery}"
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Pending Requests */}
+        {user.friendRequests && user.friendRequests.length > 0 && (
+          <div className="mb-6">
+            <div className="flex items-center justify-between mb-3 px-2">
+              <h4 className="text-sm font-bold text-slate-300 uppercase tracking-wider">Pending Requests</h4>
+              <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{user.friendRequests.length}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {user.friendRequests.map((req: any) => (
+                <button
+                  key={req._id}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20 hover:bg-purple-500/20 transition-colors text-left"
+                  onClick={() => setSelectedUserId(req._id)}
+                >
+                  <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center shrink-0 border border-purple-400/30 overflow-hidden relative">
+                    {req.avatar ? <img src={req.avatar} alt="avatar" className="w-full h-full object-cover" /> : <User size={18} className="text-white" />}
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#1e1e2d]"></div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-white truncate">{req.username}</div>
+                    <div className="text-xs text-purple-300">Wants to be friends</div>
+                  </div>
+                  <ChevronRight size={16} className="text-purple-400" />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Friends List */}
+        <div>
+          <h4 className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3 px-2">My Friends ({user.friends?.length || 0})</h4>
+          {user.friends && user.friends.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {user.friends.map((friend: any) => (
+                <button
+                  key={friend._id}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-black/40 border border-white/5 hover:bg-white/10 transition-colors text-left"
+                  onClick={() => setSelectedUserId(friend._id)}
+                >
+                  <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center shrink-0 border border-slate-600 overflow-hidden">
+                    {friend.avatar ? <img src={friend.avatar} alt="avatar" className="w-full h-full object-cover" /> : <User size={18} className="text-slate-300" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-200 truncate">{friend.username}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      Lvl {Math.floor((friend.stats?.gamesPlayed || 0) / 5) + 1} | W: {friend.stats?.wins || 0}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6 bg-black/20 rounded-xl border border-white/5 text-slate-500 text-sm">
+              You haven't added any friends yet. <br/>Use the search bar above to find players!
+            </div>
+          )}
+        </div>
+      </div>
     </div>
+
+    {/* Modals outside the animated container to prevent 'transform' containing block bugs */}
+    {error && (
+      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] px-6 py-4 bg-red-600/90 backdrop-blur-md text-white rounded-2xl shadow-2xl border border-white/20 flex items-center gap-3 animate-slide-up">
+        <AlertTriangle size={20} />
+        <span className="font-bold">{error}</span>
+        <button onClick={() => setError(null)} className="ml-2 hover:bg-white/20 p-1 rounded-lg">
+          <X size={16} />
+        </button>
+      </div>
+    )}
+
+    {selectedUserId && (
+      <UserProfileModal 
+        userId={selectedUserId} 
+        currentUser={user} 
+        onClose={() => setSelectedUserId(null)} 
+      />
+    )}
+    </>
   );
 }
 

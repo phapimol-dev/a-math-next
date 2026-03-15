@@ -96,9 +96,20 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-passwordHash');
+    const user = await User.findById(req.user.id)
+      .populate('friends', 'username avatar stats')
+      .populate('friendRequests', 'username avatar stats');
     if (!user) return res.status(404).json({ error: 'User not found' });
-    res.json({ user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
+    res.json({ 
+      user: { 
+        id: user._id, 
+        username: user.username, 
+        avatar: user.avatar, 
+        stats: user.stats,
+        friends: user.friends,
+        friendRequests: user.friendRequests
+      } 
+    });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch user' });
   }
@@ -116,7 +127,10 @@ app.get('/api/user/:id', async (req, res) => {
 
 app.get('/api/user/:id/matches', async (req, res) => {
   try {
-    const matches = await Match.find({ 'players.userId': req.params.id }).sort({ playedAt: -1 }).limit(20);
+    const matches = await Match.find({ 'players.userId': req.params.id })
+      .sort({ playedAt: -1 })
+      .limit(10)
+      .populate('players.userId', 'username avatar'); // Populate opponent details
     res.json({ matches });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch matches' });
@@ -160,6 +174,136 @@ if (isPureBackend) {
     res.status(200).send('A-Math Backend is running');
   });
 }
+
+// User Search Endpoint
+app.get('/api/users/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q || q.length < 2) {
+      return res.status(400).json({ message: 'Search query must be at least 2 characters' });
+    }
+    
+    // Case-insensitive regex search
+    const users = await User.find(
+      { username: { $regex: q, $options: 'i' } },
+      'username avatar stats _id' // Only return necessary public fields
+    ).limit(10);
+    
+    res.json(users);
+  } catch (err) {
+    console.error('[Search] Error:', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+// User Profile Endpoint
+app.get('/api/users/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .select('-password -email') // Exclude sensitive info
+      .populate('friends', 'username avatar stats')
+      .populate('friendRequests', 'username avatar');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Send Friend Request
+app.post('/api/friends/request', authenticateToken, async (req, res) => {
+  try {
+    const targetUserId = req.body.targetUserId;
+    if (req.user.id === targetUserId) return res.status(400).json({ message: 'Cannot add yourself' });
+
+    const targetUser = await User.findById(targetUserId);
+    const currentUser = await User.findById(req.user.id);
+
+    if (!targetUser) return res.status(404).json({ message: 'User not found' });
+    
+    // Check if already friends or request already sent
+    if (targetUser.friends.includes(req.user.id)) {
+      return res.status(400).json({ message: 'Already friends' });
+    }
+    if (targetUser.friendRequests.includes(req.user.id)) {
+      return res.status(400).json({ message: 'Request already sent' });
+    }
+
+    targetUser.friendRequests.push(req.user.id);
+    await targetUser.save();
+    
+    res.json({ message: 'Friend request sent' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Accept Friend Request
+app.post('/api/friends/accept', authenticateToken, async (req, res) => {
+  try {
+    const requesterId = req.body.requesterId;
+    const currentUser = await User.findById(req.user.id);
+    const requesterUser = await User.findById(requesterId);
+
+    if (!currentUser || !requesterUser) return res.status(404).json({ message: 'User not found' });
+
+    // Remove from requests
+    currentUser.friendRequests = currentUser.friendRequests.filter(id => id.toString() !== requesterId);
+    
+    // Add to friends if not already there
+    if (!currentUser.friends.includes(requesterId)) {
+      currentUser.friends.push(requesterId);
+      requesterUser.friends.push(currentUser._id);
+    }
+
+    await currentUser.save();
+    await requesterUser.save();
+
+    res.json({ message: 'Friend request accepted' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Decline Friend Request
+app.post('/api/friends/decline', authenticateToken, async (req, res) => {
+  try {
+    const requesterId = req.body.requesterId;
+    const currentUser = await User.findById(req.user.id);
+
+    if (!currentUser) return res.status(404).json({ message: 'User not found' });
+
+    currentUser.friendRequests = currentUser.friendRequests.filter(id => id.toString() !== requesterId);
+    await currentUser.save();
+
+    res.json({ message: 'Friend request declined' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Remove Friend
+app.post('/api/friends/remove', authenticateToken, async (req, res) => {
+  try {
+    const friendId = req.body.friendId;
+    const currentUser = await User.findById(req.user.id);
+    const friendUser = await User.findById(friendId);
+
+    if (currentUser) {
+      currentUser.friends = currentUser.friends.filter(id => id.toString() !== friendId);
+      await currentUser.save();
+    }
+    if (friendUser) {
+      friendUser.friends = friendUser.friends.filter(id => id.toString() !== req.user.id);
+      await friendUser.save();
+    }
+
+    res.json({ message: 'Friend removed' });
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 
 // --- HTTP Server ---
 const httpServer = createServer(app);
