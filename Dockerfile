@@ -2,11 +2,15 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install all dependencies (including devDependencies for build)
 COPY package*.json ./
-RUN npm install --production
+RUN npm install
 
-COPY server.mjs ./
-COPY src ./src
+# Copy source code
+COPY . .
+
+# Build Next.js
+RUN npm run build
 
 ENV NODE_ENV=production
 ENV PORT=8080
