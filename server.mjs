@@ -8,10 +8,15 @@ import { generateTiles, drawTiles } from "./src/lib/tiles.js";
 import { validateEquation, extractEquations, calculateScore } from "./src/lib/math_validator.js";
 import { findBotMove } from "./src/lib/bot_ai.js";
 import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import { getToken } from "next-auth/jwt";
 import { connectDB } from "./src/lib/db.js";
 import User from "./src/models/User.js";
 import Match from "./src/models/Match.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
 
@@ -21,12 +26,21 @@ const port = parseInt(process.env.PORT || "3000", 10);
 
 // Detect if we should run in Pure Backend mode (no Next.js)
 // In development, we always want Next.js. In production, we check for the build folder.
-const isPureBackend = process.env.PURE_BACKEND === "true" || (!dev && !fs.existsSync('./.next'));
+const nextBuildPath = path.resolve(__dirname, './.next');
+const hasNextBuild = fs.existsSync(nextBuildPath);
+
+const isPureBackend = process.env.PURE_BACKEND === "true" || (!dev && !hasNextBuild);
 
 let handle = null; // Will be set if Next.js initializes successfully
 
+console.log(`[Boot] --- Server Startup ---`);
+console.log(`[Boot] NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`[Boot] Dev Mode: ${dev}`);
+console.log(`[Boot] Next.js Build Path: ${nextBuildPath}`);
+console.log(`[Boot] Next.js Build Found: ${hasNextBuild}`);
 console.log(`[Boot] Mode: ${isPureBackend ? 'PURE BACKEND' : 'Next.js + Backend'}`);
 console.log(`[Boot] Port: ${port}`);
+console.log(`[Boot] -----------------------`);
 
 // --- Express App ---
 const app = express();
