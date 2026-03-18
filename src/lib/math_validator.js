@@ -66,6 +66,13 @@ const checkSingleEquation = (equationStr) => {
       const trimmed = part.trim();
       if (!trimmed) throw new Error("empty");
       
+      // Check for leading zeros or multiple zeros in numbers
+      // A number cannot start with 0 unless the number is exactly "0"
+      // Regex: matches 0 followed by one or more digits, occurring at start or after an operator
+      if (/(^|[+\-*/])0\d+/.test(trimmed)) {
+        throw new Error("leading-zero");
+      }
+
       // Valid starting chars: digit, minus (for negative numbers)
       if (!/^[\d-]/.test(trimmed) || /[+\-*/]$/.test(trimmed)) {
         throw new Error("format");

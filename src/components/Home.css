@@ -190,6 +190,49 @@
   color: #475569;
 }
 
+.search-input-group {
+  display: flex;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 0 1rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  gap: 0.75rem;
+  position: relative;
+}
+
+.search-input-group:focus-within {
+  border-color: #6366f1;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+}
+
+.search-input-group input {
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 1rem 0;
+  flex: 1;
+  color: white;
+  font-size: 0.95rem;
+}
+
+.search-loading-icon {
+  color: #818cf8;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .btn-primary,
 .btn-secondary {
   display: inline-flex;
@@ -327,8 +370,8 @@
 
 .room-info {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  flex-direction: row;
+  gap: 0.75rem;
 }
 
 .room-id {

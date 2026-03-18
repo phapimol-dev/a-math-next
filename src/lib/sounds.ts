@@ -1,6 +1,6 @@
 class GameSounds {
   private ctx: AudioContext | null = null;
-  private volumeMultiplier: number = 0.5; // Level 3 default (0.5 multiplier)
+  private volumeMultiplier: number = 1.0; // Level 5 default (max)
 
   constructor() {
     if (typeof window !== 'undefined') {

@@ -219,7 +219,7 @@ function generateExpressions(tiles) {
     if (exprOps.length === 0) {
       // Pure number — just concatenate all digits
       const numStr = digitPerm.map(t => t.value).join('');
-      if (numStr.length > 1 && numStr[0] === '0') continue; // No leading zeros
+      if (numStr.length > 1 && numStr[0] === '0') continue; // No leading zeros (e.g., "01") or consecutive zeros (e.g., "00")
       const val = parseInt(numStr, 10);
       if (!isNaN(val)) {
         results.push({ str: numStr, value: val, tiles: [...digitPerm] });
@@ -246,7 +246,7 @@ function generateExpressions(tiles) {
             );
 
             const numStr = group.map(t => t.value).join('');
-            if (numStr.length > 1 && numStr[0] === '0') { valid = false; break; } // No leading zeros
+            if (numStr.length > 1 && numStr[0] === '0') { valid = false; break; } // No leading zeros or consecutive zeros
 
             expr += numStr;
             allTilesUsed.push(...group);

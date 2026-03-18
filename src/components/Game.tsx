@@ -14,6 +14,8 @@ interface GameProps {
   room: any;
   onLeave: () => void;
   user?: any;
+  languageProp?: Language;
+  onLanguageChange?: (lang: Language) => void;
 }
 
 interface GameState {
@@ -46,7 +48,7 @@ const formatTime = (ms: number) => {
   return `${isNegative ? '-' : ''}${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-const Game: React.FC<GameProps> = ({ room, onLeave }) => {
+const Game: React.FC<GameProps> = ({ room, onLeave, languageProp = 'TH', onLanguageChange }) => {
   const [gameState, setGameState] = useState<GameState>(room);
   const [selectedTile, setSelectedTile] = useState<any>(null);
   const [placements, setPlacements] = useState<any[]>([]);
@@ -65,20 +67,16 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
   const [rackOrder, setRackOrder] = useState<string[]>([]);
   const [reorderSelectedId, setReorderSelectedId] = useState<string | null>(null);
 
-  // Settings State
   const [showSettings, setShowSettings] = useState(false);
   const [showNavMenu, setShowNavMenu] = useState(false);
-  const [language, setLanguage] = useState<Language>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('gameLanguage') as Language) || 'TH';
-    }
-    return 'TH';
-  });
+  
+  const language = languageProp;
+  const setLanguage = onLanguageChange || (() => {});
   const [volumeLevel, setVolumeLevel] = useState<number>(() => {
     if (typeof window !== 'undefined') {
-      return parseInt(localStorage.getItem('gameVolume') || '3');
+      return parseInt(localStorage.getItem('gameVolume') || '5');
     }
-    return 3;
+    return 5;
   });
 
   // Game Over State
@@ -396,8 +394,34 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
                 </div>
               ))}
             </div>
+          </aside>
 
-            <div className="actions-panel mt-4">
+          <main className="board-area">
+            <div className="board glass-panel">
+              {gameState.board.map((row, y) => row.map((cell, x) => {
+                const placement = placements.find(p => p.x === x && p.y === y);
+                const isSpecial = !cell.tile && cell.special;
+                return (
+                  <div key={`${x}-${y}`} className={`cell ${isSpecial ? `special-${cell.special?.toLowerCase()}` : ''}`} onClick={() => handleCellClick(x, y)}>
+                    {cell.tile ? (
+                      <div className={`tile on-board ${cell.tile.isBlank ? 'blank' : ''}`}>
+                        <span className="tile-value">{cell.tile.value}</span>
+                        {cell.tile.score > 0 && <span className="tile-score">{cell.tile.score}</span>}
+                      </div>
+                    ) : placement ? (
+                      <div className={`tile placement animate-scale-in ${placement.isBlank ? 'blank' : ''}`}>
+                        <span className="tile-value">{placement.value}</span>
+                        {placement.score > 0 && <span className="tile-score">{placement.score}</span>}
+                      </div>
+                    ) : isSpecial && <span className="special-label">{cell.special}</span>}
+                  </div>
+                );
+              }))}
+            </div>
+          </main>
+
+          <aside className="actions-sidebar">
+            <div className="actions-panel">
               <div className="flex flex-col gap-4">
                 <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest flex items-center justify-between">
                   {t('actions')}
@@ -461,32 +485,8 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
                 </div>
               </div>
             </div>
-          </aside>
 
-          <main className="board-area">
-            <div className="board glass-panel">
-              {gameState.board.map((row, y) => row.map((cell, x) => {
-                const placement = placements.find(p => p.x === x && p.y === y);
-                const isSpecial = !cell.tile && cell.special;
-                return (
-                  <div key={`${x}-${y}`} className={`cell ${isSpecial ? `special-${cell.special?.toLowerCase()}` : ''}`} onClick={() => handleCellClick(x, y)}>
-                    {cell.tile ? (
-                      <div className={`tile on-board ${cell.tile.isBlank ? 'blank' : ''}`}>
-                        {cell.tile.char}<span className="tile-value">{cell.tile.value}</span>
-                      </div>
-                    ) : placement ? (
-                      <div className={`tile placement animate-scale-in ${placement.isBlank ? 'blank' : ''}`}>
-                        {placement.char}<span className="tile-value">{placement.value}</span>
-                      </div>
-                    ) : isSpecial && <span className="special-label">{cell.special}</span>}
-                  </div>
-                );
-              }))}
-            </div>
-          </main>
-
-          <aside className="actions-sidebar">
-            <div className="legend-panel">
+            <div className="legend-panel mt-4">
               <h3 className="section-title"><Info size={14} /> {t('legend')}</h3>
               <div className="space-y-4">
                 <div className="legend-item"><div className="sq-preview special-te rounded-md py-1 px-2">x3</div><span className="text-xs font-semibold">{t('tripleEquation')}</span></div>
@@ -527,8 +527,8 @@ const Game: React.FC<GameProps> = ({ room, onLeave }) => {
                           }
                         }}
                       >
-                        {tile.char}
-                        <span className="tile-value">{tile.value}</span>
+                        <span className="tile-value">{tile.value || tile.char}</span>
+                        {tile.score > 0 && <span className="tile-score">{tile.score}</span>}
                       </div>
                     );
                   })}

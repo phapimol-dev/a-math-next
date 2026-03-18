@@ -32,150 +32,87 @@
   width: 100%;
   border-radius: 24px;
   overflow: hidden;
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.auth-tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.auth-tab {
-  padding: 1rem;
-  font-weight: 700;
-  font-size: 0.95rem;
-  text-align: center;
-  color: #64748b;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  transition: all 0.3s;
-  position: relative;
-}
-
-.auth-tab.active {
+.auth-title {
+  font-size: 1.75rem;
+  font-weight: 800;
   color: white;
-  background: rgba(99, 102, 241, 0.1);
+  margin: 0;
+  text-align: center;
 }
 
-.auth-tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, #6366f1, #818cf8);
-  border-radius: 3px 3px 0 0;
+.auth-subtitle {
+  color: #94a3b8;
+  text-align: center;
+  margin: 0;
+  font-size: 0.95rem;
 }
 
-.auth-form {
-  padding: 1.5rem;
+.oauth-buttons {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-.auth-input-group {
-  position: relative;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-}
-
-.auth-input-icon {
-  position: absolute;
-  left: 1rem;
-  color: #475569;
-  pointer-events: none;
-  z-index: 1;
-}
-
-.auth-input {
-  width: 100%;
-  padding: 1rem 1rem 1rem 3rem;
-  background: rgba(0, 0, 0, 0.3);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 16px;
-  color: white;
-  font-size: 1rem;
-  outline: none;
-  transition: all 0.3s;
-}
-
-.auth-input:focus {
-  border-color: #6366f1;
-  background: rgba(0, 0, 0, 0.5);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
-}
-
-.auth-input::placeholder {
-  color: #475569;
-}
-
-.auth-submit {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  padding: 1rem 2rem;
-  background: linear-gradient(135deg, #6366f1, #818cf8);
-  color: white;
-  border: none;
-  border-radius: 16px;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s;
-  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.3);
   margin-top: 0.5rem;
 }
 
-.auth-submit:hover:not(:disabled) {
+.oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 1rem;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.oauth-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 8px 25px rgba(99, 102, 241, 0.5);
   filter: brightness(1.1);
 }
 
-.auth-submit:disabled {
-  opacity: 0.6;
+.oauth-btn:disabled {
+  opacity: 0.7;
   cursor: not-allowed;
+}
+
+.oauth-btn.google {
+  background: white;
+  color: #3c4043;
+}
+
+.oauth-btn.facebook {
+  background: #1877f2;
+  color: white;
+  border: none;
+}
+
+.oauth-btn.github {
+  background: #24292e;
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .auth-spinner {
   width: 24px;
   height: 24px;
   border: 3px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
+  border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.6s linear infinite;
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.auth-switch {
-  text-align: center;
-  padding: 1rem 1.5rem 1.5rem;
-  color: #64748b;
-  font-size: 0.875rem;
-}
-
-.auth-switch button {
-  color: #818cf8;
-  background: none;
-  border: none;
-  font-weight: 700;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.auth-switch button:hover {
-  color: #a5b4fc;
+  to { transform: rotate(360deg); }
 }
 
 .auth-error {
@@ -213,15 +150,8 @@
 }
 
 @keyframes slide-up {
-  from {
-    transform: translate(-50%, 100%);
-    opacity: 0;
-  }
-
-  to {
-    transform: translate(-50%, 0);
-    opacity: 1;
-  }
+  from { transform: translate(-50%, 100%); opacity: 0; }
+  to { transform: translate(-50%, 0); opacity: 1; }
 }
 
 .animate-slide-up {

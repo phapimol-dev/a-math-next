@@ -125,7 +125,12 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ userId, currentUser
           <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="bg-white/5 rounded-xl p-3 border border-white/5">
               <Trophy size={18} className="text-yellow-400 mx-auto mb-1" />
-              <div className="text-xs text-slate-400 mb-1 flex flex-wrap"><div className='break-words'>Played/</div><div className='break-words'>Won/</div><div className='break-words'>Lost</div></div>
+              <div className="text-xs text-slate-400 mb-1 flex flex-wrap text-[.75rem]">
+                Player/Win/Loss
+                {/* <div className='break-words text-[.75rem]'>Played/</div>
+                <div className='break-words text-[.75rem]'>Won/</div>
+                <div className='break-words text-[.75rem]'>Lost</div> */}
+              </div>
               <div className="font-bold">{stats.gamesPlayed} / {stats.wins} / {stats.losses}</div>
             </div>
             <div className="bg-white/5 rounded-xl p-3 border border-white/5">

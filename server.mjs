@@ -8,20 +8,20 @@ import { generateTiles, drawTiles } from "./src/lib/tiles.js";
 import { validateEquation, extractEquations, calculateScore } from "./src/lib/math_validator.js";
 import { findBotMove } from "./src/lib/bot_ai.js";
 import fs from "fs";
-import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import { getToken } from "next-auth/jwt";
 import { connectDB } from "./src/lib/db.js";
 import User from "./src/models/User.js";
 import Match from "./src/models/Match.js";
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-production';
+const NEXTAUTH_SECRET = process.env.NEXTAUTH_SECRET || process.env.JWT_SECRET;
 
 const dev = process.env.NODE_ENV !== "production";
 const hostname = "0.0.0.0";
 const port = parseInt(process.env.PORT || "3000", 10);
 
 // Detect if we should run in Pure Backend mode (no Next.js)
-const isPureBackend = process.env.PURE_BACKEND === "true" || !fs.existsSync('./.next');
+// In development, we always want Next.js. In production, we check for the build folder.
+const isPureBackend = process.env.PURE_BACKEND === "true" || (!dev && !fs.existsSync('./.next'));
 
 let handle = null; // Will be set if Next.js initializes successfully
 
@@ -36,63 +36,21 @@ app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 
 // --- Auth Helper ---
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'No token provided' });
+const authenticateToken = async (req, res, next) => {
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
+    // NextAuth places the token in cookies, or we can parse the Auth header if passed manually
+    const token = await getToken({ req, secret: NEXTAUTH_SECRET });
+    
+    if (!token) return res.status(401).json({ error: 'No token provided' });
+    
+    // Attach the verified user details to the request
+    req.user = { id: token.id || token.sub, username: token.username };
     next();
-  } catch {
+  } catch (error) {
+    console.error("[Auth] NextAuth Token Error:", error);
     return res.status(403).json({ error: 'Invalid token' });
   }
 };
-
-// --- Auth API Routes ---
-app.post('/api/auth/register', async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) return res.status(400).json({ error: 'All fields are required' });
-    if (username.length < 3 || username.length > 20) return res.status(400).json({ error: 'Username must be 3-20 characters' });
-    if (password.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-
-    const existingUser = await User.findOne({ $or: [{ email }, { username }] });
-    if (existingUser) {
-      return res.status(400).json({ error: existingUser.email === email ? 'Email already in use' : 'Username already taken' });
-    }
-
-    const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, email, passwordHash });
-    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
-
-    console.log(`[Auth] New user registered: ${username}`);
-    res.json({ token, user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
-  } catch (err) {
-    console.error('[Auth] Register error:', err.message);
-    res.status(500).json({ error: 'Registration failed' });
-  }
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
-
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) return res.status(401).json({ error: 'Invalid email or password' });
-
-    const valid = await bcrypt.compare(password, user.passwordHash);
-    if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
-
-    const token = jwt.sign({ id: user._id, username: user.username }, JWT_SECRET, { expiresIn: '30d' });
-    console.log(`[Auth] User logged in: ${user.username}`);
-    res.json({ token, user: { id: user._id, username: user.username, email: user.email, avatar: user.avatar, stats: user.stats } });
-  } catch (err) {
-    console.error('[Auth] Login error:', err.message);
-    res.status(500).json({ error: 'Login failed' });
-  }
-});
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
@@ -207,6 +165,24 @@ app.get('/api/users/:id', async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.json(user);
   } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Rankings Endpoint
+app.get('/api/rankings', async (req, res) => {
+  try {
+    const topWins = await User.find({}, 'username avatar stats')
+      .sort({ 'stats.wins': -1 })
+      .limit(10);
+    
+    const topTurnScores = await User.find({}, 'username avatar stats')
+      .sort({ 'stats.bestTurnScore': -1 })
+      .limit(10);
+    
+    res.json({ topWins, topTurnScores });
+  } catch (err) {
+    console.error('[Rankings] Error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -486,7 +462,7 @@ io.on("connection", (socket) => {
     // Auto-send current public rooms on connect
     socket.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
 
-    socket.on("createRoom", ({ playerName, isPublic, isManualCheck, mongoId }) => {
+    socket.on("createRoom", ({ playerName, avatar, isPublic, isManualCheck, mongoId }) => {
       const roomId = generateRoomId();
       const room = {
         id: roomId,
@@ -494,7 +470,7 @@ io.on("connection", (socket) => {
         isManualCheck: !!isManualCheck,
         isBotRoom: false,
         lastMove: null,
-        players: [{ id: socket.id, name: playerName, score: 0, rack: [], isBot: false, timeLeft: 22 * 60 * 1000, mongoId: mongoId || null }],
+        players: [{ id: socket.id, name: playerName, avatar: avatar || null, score: 0, rack: [], isBot: false, timeLeft: 22 * 60 * 1000, mongoId: mongoId || null }],
         gameState: "waiting",
         board: createBoard(),
         tiles: generateTiles(),
@@ -533,7 +509,7 @@ io.on("connection", (socket) => {
       socket.emit("roomCreated", room);
     });
 
-    socket.on("joinRoom", ({ roomId, playerName, mongoId }) => {
+    socket.on("joinRoom", ({ roomId, playerName, avatar, mongoId }) => {
       const room = rooms.get(roomId);
       if (!room) return socket.emit("error", "Room not found");
 
@@ -544,6 +520,7 @@ io.on("connection", (socket) => {
         console.log(`[Reconnect] Player "${playerName}" reconnected with new ID ${socket.id} in room ${roomId}`);
         existingPlayer.id = socket.id;
         existingPlayer.online = true;
+        if (avatar) existingPlayer.avatar = avatar;
         if (mongoId) existingPlayer.mongoId = mongoId;
         socket.join(roomId);
         io.to(roomId).emit("playerJoined", room);
@@ -551,7 +528,7 @@ io.on("connection", (socket) => {
       }
 
       if (room.players.length < 2) {
-        room.players.push({ id: socket.id, name: playerName, score: 0, rack: [], timeLeft: 22 * 60 * 1000, online: true, mongoId: mongoId || null });
+        room.players.push({ id: socket.id, name: playerName, avatar: avatar || null, score: 0, rack: [], timeLeft: 22 * 60 * 1000, online: true, mongoId: mongoId || null });
         socket.join(roomId);
         io.to(roomId).emit("playerJoined", room);
         if (room.isPublic && room.players.length >= 2) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
@@ -640,6 +617,15 @@ io.on("connection", (socket) => {
           ...currentPlayer.rack.filter(t => !usedIds.includes(t.id)),
           ...newTiles
         ];
+
+        // Track Best Turn Score
+        if (currentPlayer.mongoId) {
+          User.findById(currentPlayer.mongoId).then(user => {
+            if (user && moveScore > (user.stats?.bestTurnScore || 0)) {
+              User.findByIdAndUpdate(currentPlayer.mongoId, { $set: { 'stats.bestTurnScore': moveScore } }).exec();
+            }
+          }).catch(err => console.error('[Stats] Best turn score update failed:', err));
+        }
 
         // Store lastMove for challenge system
         room.lastMove = {
@@ -925,5 +911,10 @@ function getPublicRoomsList(rooms) {
   return Array.from(rooms.values())
     .filter(r => r.isPublic && r.players.length < 2 && r.gameState === "waiting" && !r.isBotRoom)
     .slice(-10) // Show only 10 most recent rooms
-    .map(r => ({ id: r.id, playerCount: r.players.length }));
+    .map(r => ({ 
+      id: r.id, 
+      playerCount: r.players.length,
+      hostName: r.players[0]?.name || "Anonymous",
+      hostAvatar: r.players[0]?.avatar || null
+    }));
 }

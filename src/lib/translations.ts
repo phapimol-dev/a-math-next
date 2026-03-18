@@ -47,7 +47,14 @@ export const translations = {
     detectedEquations: "สมการที่ตรวจพบ:",
     failedEquations: "สมการที่ผิด:",
     botSwapped: "บอทเปลี่ยนเบี้ย {{count}} ตัว",
-    botPassed: "บอทผ่านเทิร์น"
+    botPassed: "บอทผ่านเทิร์น",
+    ranking: "จัดลำดับ",
+    mostWins: "ผู้ชนะสูงสุด",
+    bestTurn: "คะแนนสูงสุดต่อตา",
+    ptsTurn: "คะแนนต่อตา",
+    globalLeaderboard: "อันดับผู้เล่นทั่วโลก",
+    noCompetitionData: "ยังไม่มีข้อมูลการแข่งขัน",
+    searchPlayers: "ค้นหาผู้เล่น..."
   },
   EN: {
     lobbyTitle: "Lobby",
@@ -95,7 +102,14 @@ export const translations = {
     detectedEquations: "Detected Equations:",
     failedEquations: "Failed Equations:",
     botSwapped: "Bot swapped {{count}} tiles",
-    botPassed: "Bot passed"
+    botPassed: "Bot passed",
+    ranking: "Ranking",
+    mostWins: "Most Wins",
+    bestTurn: "Best Turn",
+    ptsTurn: "Pts Turn",
+    globalLeaderboard: "Global Leaderboard",
+    noCompetitionData: "No competition data yet.",
+    searchPlayers: "Search players..."
   }
 };
 
