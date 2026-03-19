@@ -36,11 +36,16 @@ const MatchHistoryModal: React.FC<MatchHistoryModalProps> = ({ userId, username,
   };
 
   const getMatchSummary = (match: any) => {
-    const isBotMatch = match.players.some((p: any) => p.isBot);
-    const myPlayer = match.players.find((p: any) => p.userId?._id === userId || p.userId === userId || (!p.userId && !p.isBot));
-    const opponent = match.players.find((p: any) => p.userId?._id !== userId && p.userId !== userId);
+    const myPlayer = match.players.find((p: any) => 
+      p.userId?._id === userId || 
+      p.userId === userId || 
+      p.username === username
+    );
+    const opponent = match.players.find((p: any) => 
+      p.username !== myPlayer?.username
+    );
 
-    const opponentName = opponent?.isBot ? `Bot (Lvl ${opponent.difficulty || '?'})` : (opponent?.userId?.username || 'Unknown');
+    const isMeWinnerId = match.winnerId === userId || (match.winnerId?._id === userId);
     
     let resultText = 'Draw';
     let resultColor = 'text-slate-400';
@@ -48,20 +53,36 @@ const MatchHistoryModal: React.FC<MatchHistoryModalProps> = ({ userId, username,
 
     if (match.isDraw) {
       resultText = 'Draw';
-    } else if (match.winnerId === userId) {
-      resultText = 'Victory';
-      resultColor = 'text-green-400';
-      ResultIcon = Trophy;
+    } else if (match.winnerId) {
+      // Prioritize explicit winnerId from server (handles surrenders correctly)
+      if (isMeWinnerId) {
+        resultText = 'Victory';
+        resultColor = 'text-green-400';
+        ResultIcon = Trophy;
+      } else {
+        resultText = 'Defeat';
+        resultColor = 'text-red-400';
+        ResultIcon = XCircle;
+      }
     } else {
-      resultText = 'Defeat';
-      resultColor = 'text-red-400';
-      ResultIcon = XCircle;
+      // Fallback for older matches or Bot matches where winnerId might be null
+      if (myPlayer && myPlayer.score > (opponent?.score || 0)) {
+        resultText = 'Victory';
+        resultColor = 'text-green-400';
+        ResultIcon = Trophy;
+      } else {
+        resultText = 'Defeat';
+        resultColor = 'text-red-400';
+        ResultIcon = XCircle;
+      }
     }
 
     if (match.reason === 'surrender') {
-        const isMySurrender = (!match.isDraw && match.winnerId !== userId); // If not draw and I didn't win, I surrendered
+        const isMySurrender = (!match.isDraw && !isMeWinnerId);
         resultText += isMySurrender ? ' (Surr)' : ' (Opp Surr)';
     }
+
+    const opponentName = opponent?.isBot ? `Bot (${match.reason === 'surrender' && !isMeWinnerId ? 'Won' : 'L3'})` : (opponent?.username || 'Unknown');
 
     return {
       opponentName,

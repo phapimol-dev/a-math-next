@@ -74,16 +74,21 @@ export default function App() {
     disconnectSocket();
     setRoom(null);
     setUser(null);
+    localStorage.removeItem('currentRoomId');
     await signOut({ callbackUrl: '/' });
   };
 
   const handleRoomJoined = (roomData: any) => {
     setRoom(roomData);
+    if (roomData && roomData.id) {
+      localStorage.setItem('currentRoomId', roomData.id);
+    }
   };
 
   const handleLeaveRoom = () => {
     disconnectSocket();
     setRoom(null);
+    localStorage.removeItem('currentRoomId');
   };
 
   if (status === 'loading') {
@@ -105,14 +110,14 @@ export default function App() {
   return (
     <main className={`min-h-screen bg-[#0a0a0a] ${showNavPadding ? 'pt-16' : ''}`}>
       {user && (
-        <Navbar 
-          user={user} 
-          onLogout={handleLogout} 
-          onGoHome={handleLeaveRoom} 
+        <Navbar
+          user={user}
+          onLogout={handleLogout}
+          onGoHome={handleLeaveRoom}
           onShowRanking={() => setShowRanking(true)}
           onShowHistory={() => setShowHistory(true)}
           onSearchProfile={(id) => setSelectedSearchUserId(id)}
-          isInGame={!!room} 
+          isInGame={!!room}
           language={language}
         />
       )}
@@ -126,10 +131,10 @@ export default function App() {
 
       {showRanking && <RankingModal onClose={() => setShowRanking(false)} language={language} />}
       {showHistory && user && (
-        <MatchHistoryModal 
-          userId={user.id} 
-          username={user.username} 
-          onClose={() => setShowHistory(false)} 
+        <MatchHistoryModal
+          userId={user.id}
+          username={user.username}
+          onClose={() => setShowHistory(false)}
         />
       )}
       {selectedSearchUserId && (

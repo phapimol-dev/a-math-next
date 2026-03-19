@@ -577,7 +577,9 @@ const Game: React.FC<GameProps> = ({ room, onLeave, languageProp = 'TH', onLangu
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
           <div className="max-w-md w-full glass-panel p-8 text-center border-2 border-white/10">
             {gameOverInfo.winnerId === socket.id ? <><div className="text-6xl mb-6">🏆</div><h2 className="text-4xl font-black text-yellow-400 mb-2">{t('victory')}</h2></> : gameOverInfo.isDraw ? <><div className="text-6xl mb-6">🤝</div><h2 className="text-4xl font-black text-white mb-2">{t('draw')}</h2></> : <><div className="text-6xl mb-6">☹️</div><h2 className="text-4xl font-black text-slate-400 mb-2">{t('defeat')}</h2></>}
-            <p className="text-slate-400 mb-8 italic">"{gameOverInfo.reason}"</p>
+            <p className="text-slate-400 mb-8 italic">
+              {gameOverInfo.reason === 'disconnection' ? t('disconnection') : (gameOverInfo.reason === 'surrender' ? t('surrenderReason') : `"${gameOverInfo.reason}"`)}
+            </p>
             <div className="space-y-4 mb-8">
               {gameOverInfo.room.players.map((p: any) => (
                 <div key={p.id} className="flex justify-between items-center p-4 bg-white/5 rounded-xl border border-white/5">

@@ -516,7 +516,7 @@ io.on("connection", (socket) => {
         tiles: generateTiles(),
         turnIndex: 0,
         lastTurnStartTime: null,
-        gameStartTime: null
+        matchStartedAt: null
       };
       rooms.set(roomId, room);
       socket.join(roomId);
@@ -560,6 +560,7 @@ io.on("connection", (socket) => {
         });
         room.gameState = "playing";
         room.lastTurnStartTime = Date.now();
+        room.matchStartedAt = Date.now();
         
         io.to(roomId).emit("gameStarted", room);
 
@@ -812,18 +813,61 @@ io.on("connection", (socket) => {
             player.online = false;
             console.log(`[Disconnect] ${player.name} went offline in room ${roomId}`);
             io.to(roomId).emit("roomUpdate", room);
-          } else {
-            // Hard disconnect for waiting/finished rooms
-            room.players.splice(pIdx, 1);
-            if (room.players.length === 0) {
-              rooms.delete(roomId);
-              console.log(`[Room Deleted] ${roomId} (no players)`);
-            } else {
-              io.to(roomId).emit("playerLeft", room);
-            }
-          }
 
-          if (room.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
+            // Wait 5 seconds before awarding win to the other player
+            setTimeout(() => {
+              const currentRoom = rooms.get(roomId);
+              if (currentRoom && currentRoom.gameState === 'playing') {
+                const p = currentRoom.players.find(pl => pl.name === player.name);
+                // Only end game if they haven't reconnected (online would be true)
+                if (p && !p.online) {
+                  console.log(`[Game Over] Room ${roomId} ended because ${player.name} disconnected.`);
+                  currentRoom.gameState = "finished";
+                  
+                  const winner = currentRoom.players.find(pl => pl.name !== player.name);
+                  const isDraw = false;
+                  
+                  io.to(roomId).emit("gameOver", { 
+                    room: currentRoom, 
+                    reason: "disconnection", 
+                    winnerId: winner?.id,
+                    looserName: player.name,
+                    isDraw
+                  });
+
+                  // Record match to database
+                  saveMatchResult(currentRoom, winner?.mongoId || null, isDraw, 'disconnection');
+                  if (currentRoom.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
+                }
+              }
+            }, 5000);
+          } else {
+            // Grace period for waiting/finished rooms (allows for refreshes)
+            player.online = false;
+            console.log(`[Disconnect] ${player.name} went offline in waiting room ${roomId}`);
+            
+            // Wait 5 seconds before removing from waiting room
+            setTimeout(() => {
+              const currentRoom = rooms.get(roomId);
+              if (currentRoom) {
+                const p = currentRoom.players.find(pl => pl.name === player.name);
+                // Only remove if they haven't reconnected (online would be true)
+                if (p && !p.online) {
+                  const idx = currentRoom.players.findIndex(pl => pl.name === player.name);
+                  if (idx !== -1) {
+                    currentRoom.players.splice(idx, 1);
+                    if (currentRoom.players.length === 0) {
+                      rooms.delete(roomId);
+                      console.log(`[Room Deleted] ${roomId} (no players left after grace period)`);
+                    } else {
+                      io.to(roomId).emit("playerLeft", currentRoom);
+                    }
+                    if (currentRoom.isPublic) io.emit("publicRoomsUpdate", getPublicRoomsList(rooms));
+                  }
+                }
+              }
+            }, 5000);
+          }
           break;
         }
       }
@@ -836,12 +880,14 @@ async function saveMatchResult(room, winnerId, isDraw, reason) {
     const matchPlayers = room.players.map(p => ({
       userId: p.mongoId || null,
       username: p.name,
-      score: p.score
+      score: p.score,
+      isBot: !!p.isBot
     }));
 
-    const duration = room.lastTurnStartTime
-      ? Date.now() - (room.gameStartTime || room.lastTurnStartTime)
+    const durationSeconds = room.matchStartedAt
+      ? Math.floor((Date.now() - room.matchStartedAt) / 1000)
       : 0;
+    const duration = Math.max(0, durationSeconds);
 
     await Match.create({
       players: matchPlayers,

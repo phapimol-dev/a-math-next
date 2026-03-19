@@ -54,7 +54,9 @@ export const translations = {
     ptsTurn: "คะแนนต่อตา",
     globalLeaderboard: "อันดับผู้เล่นทั่วโลก",
     noCompetitionData: "ยังไม่มีข้อมูลการแข่งขัน",
-    searchPlayers: "ค้นหาผู้เล่น..."
+    searchPlayers: "ค้นหาผู้เล่น...",
+    disconnection: "คู่ต่อสู้ขาดการเชื่อมต่อ",
+    surrenderReason: "มีการยอมแพ้เกิดขึ้น"
   },
   EN: {
     lobbyTitle: "Lobby",
@@ -109,7 +111,9 @@ export const translations = {
     ptsTurn: "Pts Turn",
     globalLeaderboard: "Global Leaderboard",
     noCompetitionData: "No competition data yet.",
-    searchPlayers: "Search players..."
+    searchPlayers: "Search players...",
+    disconnection: "Opponent Disconnected",
+    surrenderReason: "A player has surrendered"
   }
 };
 

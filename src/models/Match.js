@@ -4,7 +4,8 @@ const matchSchema = new mongoose.Schema({
   players: [{
     userId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     username: { type: String, required: true },
-    score:    { type: Number, default: 0 }
+    score:    { type: Number, default: 0 },
+    isBot:    { type: Boolean, default: false }
   }],
   winnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   isDraw:   { type: Boolean, default: false },

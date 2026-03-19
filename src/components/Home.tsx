@@ -55,11 +55,21 @@ const Home: React.FC<HomeProps> = ({ user, onRoomJoined, onLogout, language = 'T
 
     const onConnect = () => {
       socket.emit('getPublicRooms');
+      // Auto-rejoin if we have a room ID in localStorage
+      const savedRoomId = localStorage.getItem('currentRoomId');
+      if (savedRoomId && !isLoading) {
+        console.log(`[Auto-Rejoin] Attempting to rejoin room ${savedRoomId}`);
+        handleJoinRoom(savedRoomId);
+      }
     };
     socket.on('connect', onConnect);
 
     if (socket.connected) {
       socket.emit('getPublicRooms');
+      const savedRoomId = localStorage.getItem('currentRoomId');
+      if (savedRoomId && !isLoading) {
+        handleJoinRoom(savedRoomId);
+      }
     }
 
     return () => {
